@@ -272,7 +272,7 @@ def get_credentials(
                         )
                     )
 
-                    auth_request = Request()  # type: ignore[no-untyped-call]
+                    auth_request = Request()
                     google_credentials.refresh(auth_request)
 
                     # OpenAI Client

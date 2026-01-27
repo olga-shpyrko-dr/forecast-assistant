@@ -12,7 +12,7 @@ The forecast assistant is a customizable application template for building AI-po
 ![Using forecastic](https://s3.amazonaws.com/datarobot_public/drx/recipe_gifs/launch_gifs/forecast-assistant-smallest.gif)
 
 ## Table of contents
-1. [Setup](#setup)
+1. [Quick Start](#-quick-start)
 2. [Architecture overview](#architecture-overview)
 3. [Why build AI Apps with DataRobot app templates?](#why-build-ai-apps-with-datarobot-app-templates)
 4. [Make changes](#make-changes)
@@ -26,35 +26,92 @@ The forecast assistant is a customizable application template for building AI-po
 7. [Setup for advanced users](#setup-for-advanced-users)
 8. [Data privacy](#data-privacy)
 
-## Setup
+## 🚀 Quick Start
 
-> [!IMPORTANT]  
-> If you are running this template in a DataRobot codespace, `pulumi` is already configured and the repository is automatically cloned.
-> Skip to **Step 3**.
+### Quickstart with DataRobot CLI
 
-1. If `pulumi` is not already installed, install the CLI following instructions [here](https://www.pulumi.com/docs/iac/download-install/). 
-   After installing `pulumi` for the first time, restart your terminal and run:
-   ```bash
-   pulumi login --local  # omit --local to use Pulumi Cloud (requires separate account)
-   ```
+#### 1. Install the DataRobot CLI
 
-2. Clone the template repository.
+If you haven't already, install the DataRobot CLI by following the installation instructions at:  
+https://github.com/datarobot-oss/cli?tab=readme-ov-file#installation
 
-   ```bash
-   git clone https://github.com/datarobot-community/forecast-assistant.git
-   cd forecast-assistant
-   ```
+#### 2. Start the Application
 
-3. Rename the file `.env.template` to `.env` in the root directory of the repo and populate your credentials.
-   
-   [Optional] If you want to use the GenAI functionality of the app, follow the instructions in `.env` to supply LLM credentials.
-   
-4. In a terminal, run the following command:
-   
-   ```bash
-   python quickstart.py YOUR_PROJECT_NAME  # Windows users may have to use `py` instead of `python`
-   ```
-   Python 3.9+ is required.
+Run the following command to start the local development environment. An interactive wizard will guide you through the selection of configuration options, including creating a `.env` file in the root directory and populating it with environment variables you specify during the wizard.
+
+```sh
+dr start
+```
+
+The DataRobot CLI (`dr`) will:
+- Guide you through configuration setup
+- Create and populate your `.env` file with the necessary environment variables
+- Deploy your application to DataRobot
+- Display a link to your running application when complete
+
+When deployment completes, the terminal will display a link to your running application.  
+👉 **Click the link to open and start using your app!**
+
+### Build in Codespace
+
+If you're using **DataRobot Codespace**, everything you need is already installed.
+Follow the steps below to launch the entire application in just a few minutes.
+
+Use the built-in terminal on the left sidebar of the Codespace.
+
+From the project root:
+
+```sh
+dr start
+```
+
+When deployment completes, the terminal will display a link to your running application.\
+👉 **Click the link to open and start using your app!**
+
+### Template Development
+
+For local development, follow all of the steps below.
+
+#### 1. Install Pulumi (if you don't have it yet)
+
+If Pulumi is not already installed, follow the installation instructions in the Pulumi [documentation](https://www.pulumi.com/docs/iac/download-install/).
+After installing for the first time, **restart your terminal** and run:
+
+```sh
+pulumi login --local      # omit --local to use Pulumi Cloud (requires an account)
+```
+
+#### 2. Clone the Template Repository
+
+```bash
+git clone https://github.com/datarobot-community/forecast-assistant.git
+cd forecast-assistant
+```
+
+#### 3. Create and Populate Your `.env` File
+Run the following command to launch an interactive wizard that helps you create and populate your `.env` file based on `.env.template` and walks you through the required credentials setup.
+```sh
+dr dotenv setup
+```
+If you want to locate the credentials manually:
+
+- DataRobot API Token:
+  See Create a DataRobot API Key in the [DataRobot API Quickstart docs](https://docs.datarobot.com/en/docs/api/api-quickstart/index.html#create-a-datarobot-api-key).
+
+- DataRobot Endpoint:
+  See Retrieve the API Endpoint in the same [Quickstart docs](https://docs.datarobot.com/en/docs/api/api-quickstart/index.html#retrieve-the-api-endpoint).
+
+- LLM Endpoint & API Key (Azure OpenAI):
+  This template is pre-configured to use an Azure OpenAI endpoint. If you wish to use a different provider, see [Change the LLM](#change-the-llm).
+
+#### 4. Run the Application
+
+In a terminal, run the following command:
+
+```bash
+python quickstart.py YOUR_PROJECT_NAME  # Windows users may have to use `py` instead of `python`
+```
+Python 3.9+ is required.
 
 Advanced users who want to control virtual environment creation, dependency installation, environment variable setup,
 and `pulumi` invocation, see [the advanced setup instructions](#setup-for-advanced-users).

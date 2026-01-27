@@ -1,3 +1,6 @@
+# Generated Taskfile
+Taskfile.gen.yaml
+
 # python
 __pycache__/
 venv
@@ -16,3 +19,5 @@ e2e/test_results/*
 .env*
 !.env.template
 Pulumi.*.yaml
+
+.datarobot/cli/state.yaml

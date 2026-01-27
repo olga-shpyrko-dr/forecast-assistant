@@ -7,9 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.3.0] - 2026-01-21
+
+### Added
+
+- Integration with DataRobot Python client 3.9.1 `CustomApplication` and `CustomApplicationSource` entities.
+- Dynamic resource fetching from CustomApplicationSource when creating CustomApplications.
+- Added `deploy` task to simplify deployment process.
+
+### Changed
+
+- Updated README.md structure to include Quick Start with DataRobot CLI, Codespace build instructions, and manual setup details.
+
 ### Fixed
 - Fixed credential handling when no credentials available
-- Fixed chart not displaying correctly if data is not ordered by date 
+- Fixed chart not displaying correctly if data is not ordered by date
 
 ## [0.2.0] - 2025-07-14
 
