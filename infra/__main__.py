@@ -65,6 +65,8 @@ TEXTGEN_DEPLOYMENT_ID = os.environ.get("TEXTGEN_DEPLOYMENT_ID") or None
 TEXTGEN_REGISTERED_MODEL_ID = os.environ.get("TEXTGEN_REGISTERED_MODEL_ID") or None
 # Set FORECAST_DEPLOYMENT_ID to use an existing forecast deployment instead of creating a new one
 FORECAST_DEPLOYMENT_ID = os.environ.get("FORECAST_DEPLOYMENT_ID") or None
+# Set FORECAST_SCORING_DATASET_ID to use a pre-existing DR AI Catalog dataset for scoring
+SCORING_DATASET_ID = os.environ.get("FORECAST_SCORING_DATASET_ID") or None
 
 if settings_generative.LLM == LLMs.DEPLOYED_LLM:
     pulumi.info(f"{TEXTGEN_DEPLOYMENT_ID=}")
@@ -94,16 +96,21 @@ use_case = datarobot.UseCase.get(
     resource_name="Forecasting Assistant Use Case",
 )
 
-if not scoring_prep_output_file.exists():
-    pulumi.info("Executing scoring data prep notebook...")
-    run_notebook(scoring_prep_nb)
-else:
-    pulumi.info(
-        f"Using existing scoring data prep outputs in '{scoring_prep_output_file}'"
-    )
-with open(scoring_prep_output_file) as f:
-    scoring_dataset_id = yaml.safe_load(f)["id"]
+if SCORING_DATASET_ID is not None:
+    pulumi.info(f"Using existing scoring dataset: {SCORING_DATASET_ID}")
+    scoring_dataset_id = SCORING_DATASET_ID
     scoring_prep_output = ScoringDataset.model_construct(id=scoring_dataset_id)
+else:
+    if not scoring_prep_output_file.exists():
+        pulumi.info("Executing scoring data prep notebook...")
+        run_notebook(scoring_prep_nb)
+    else:
+        pulumi.info(
+            f"Using existing scoring data prep outputs in '{scoring_prep_output_file}'"
+        )
+    with open(scoring_prep_output_file) as f:
+        scoring_dataset_id = yaml.safe_load(f)["id"]
+        scoring_prep_output = ScoringDataset.model_construct(id=scoring_dataset_id)
 
 
 if settings_main.default_prediction_server_id is None:

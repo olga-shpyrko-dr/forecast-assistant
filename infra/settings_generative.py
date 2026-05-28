@@ -33,7 +33,6 @@ from .settings_main import (
 )
 
 LLM = LLMs.AZURE_OPENAI_GPT_4_O_MINI
-
 if LLM is not None:
     playground_args = PlaygroundArgs(
         resource_name=f"Forecasting Assistant Playground [{project_name}]",

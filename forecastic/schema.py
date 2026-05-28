@@ -13,7 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import datarobot as dr
 from pydantic import BaseModel, ConfigDict, Field
@@ -68,8 +68,9 @@ class AppSettings(BaseModel):
     important_features: list[dict[str, Any]] = Field(
         description="List of most important features exposed to the front end for rendering"
     )
-    prediction_interval: int = Field(
-        description="Prediction interval for upper and lower bound of forecast"
+    prediction_interval: Optional[int] = Field(
+        default=None,
+        description="Prediction interval for upper and lower bound of forecast",
     )
 
     use_case_id: str
@@ -80,7 +81,7 @@ class AppSettings(BaseModel):
     target: str = Field(
         description="Name of the untransformed target column in the training dataset"
     )
-    multiseries_id_column: str
+    multiseries_id_column: Optional[str] = None
     feature_derivation_window_start: int
     feature_derivation_window_end: int
     forecast_window_start: int
@@ -88,7 +89,7 @@ class AppSettings(BaseModel):
     maximum_default_display_length: int = Field(
         description="Maximum number of historical points to display on chart by default"
     )
-    timestep_settings: dict[str, Any]
+    timestep_settings: dict[str, Any] = Field(default_factory=dict)
     datetime_partition_column: str = Field(
         description="Name of the untransformed datetime partition column in the training dataset"
     )
@@ -96,7 +97,7 @@ class AppSettings(BaseModel):
         description="Name of the DataRobot renamed datetime partition column"
     )
     training_dataset_id: str
-    calendar_id: str
+    calendar_id: Optional[str] = None
     filterable_categories: list[CategoryFilter] = Field(
         description="List of filterable categories"
     )
@@ -139,13 +140,13 @@ class AppSettings(BaseModel):
             datetime_partitioning_specification.multiseries_id_columns is None
             or not len(datetime_partitioning_specification.multiseries_id_columns)
         ):
-            raise ValueError(
-                "Registered model mut be associated with a multiseries DR modeling project"
-            )
+            multiseries_id_column = None
+            filterable_categories: list[CategoryFilter] = []
         else:
             multiseries_id_column = (
                 datetime_partitioning_specification.multiseries_id_columns[0]
             )
+            filterable_categories = static_app_settings.filterable_categories
         training_dataset = project.get_dataset()
         if training_dataset is None:
             raise ValueError(
@@ -184,7 +185,7 @@ class AppSettings(BaseModel):
             datetime_partition_column_transformed=datetime_partitioning.datetime_partition_column,
             training_dataset_id=training_dataset_id,
             calendar_id=datetime_partitioning.calendar_id,
-            filterable_categories=static_app_settings.filterable_categories,
+            filterable_categories=filterable_categories,
             page_description=static_app_settings.page_description,
             lower_bound_forecast_at_0=static_app_settings.lower_bound_forecast_at_0,
             graph_y_axis=static_app_settings.graph_y_axis,
@@ -198,9 +199,13 @@ class AppSettings(BaseModel):
     ) -> dict[str, Any]:
         url = f"projects/{project_id}/features/{datetime_partition_column_raw}/multiseriesProperties"
         response = dr.Client().get(url).json()
-        timestep_settings: dict[str, Any] = response["detectedMultiseriesIdColumns"][0]
-        del timestep_settings["multiseriesIdColumns"]
-        return timestep_settings
+        detected = response.get("detectedMultiseriesIdColumns", [])
+        if detected:
+            timestep_settings: dict[str, Any] = detected[0]
+            del timestep_settings["multiseriesIdColumns"]
+            return timestep_settings
+        # multiseriesProperties returned nothing for this project; timestep_settings unused at runtime
+        return {}
 
 
 class MultiSelectFilter(BaseModel):
@@ -217,8 +222,8 @@ class FilterSpec(BaseModel):
 class PredictionRow(BaseModel):
     date_id: str
     prediction: float
-    low: float
-    high: float
+    low: Optional[float] = None
+    high: Optional[float] = None
 
 
 class ExplanationRow(BaseModel):

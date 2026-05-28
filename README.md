@@ -177,44 +177,48 @@ In `infra/settings_generative.py`: Set `LLM=None` to disable any generative outp
 
 ### Use an existing forecast deployment
 
-To use an existing forecast deployment instead of creating a new one:
+To deploy the app against an existing DataRobot time series deployment (no model training):
 
-1. In `.env`: Set `FORECAST_DEPLOYMENT_ID` to the ID of your existing deployment
-2. Run `pulumi up` to update your stack with the existing deployment
-   ```bash
-   source set_env.sh  # On windows use `set_env.bat`
-   pulumi up
-   ```
+**1. Configure `.env`**
 
-> **⚠️ Note:** When using an existing deployment:
-> - The script will skip creating batch prediction jobs and retraining policies  
-> - The `train_model.ipynb` notebook will skip training and extract metadata from the existing model
-> - You may need to adjust the `feature_settings_config` in the notebook to match your model's known-in-advance features
+```
+FORECAST_DEPLOYMENT_ID=<your-deployment-id>
+FORECAST_SCORING_DATASET_ID=<your-scoring-dataset-id>   # AI Catalog dataset ID
+```
 
-**Files that need modification for existing deployments:**
+Set `LLM=None` in `infra/settings_generative.py` if you do not need the AI narrative feature.
 
-When using an existing deployment, you may need to modify these files to match your model's configuration:
+**2. Update `feature_settings_config` in `notebooks/train_model.ipynb`**
 
-1. **`notebooks/train_model.ipynb`** - Update the `feature_settings_config` to match your model's known-in-advance features:
-   ```python
-   feature_settings_config=[
-       FeatureSettingConfig(feature_name="Your_Feature_Name", known_in_advance=True),
-       # Add other known-in-advance features from your model
-   ]
-   ```
+Find the `feature_settings_config` list in the SKIP_TRAINING branch and replace it with the known-in-advance features for your model:
+```python
+feature_settings_config=[
+    FeatureSettingConfig(feature_name="Your_Feature_Name", known_in_advance=True),
+    # add all known-in-advance features from your deployment
+]
+```
 
-2. **`notebooks/prep_scoring_data.ipynb`** - Ensure your scoring data preparation matches the data format expected by your existing model
+**3. Run the training notebook to generate app settings**
 
-3. **`forecastic/schema.py`** - Update app settings if your model has different features or requirements
+The notebook skips model training and extracts metadata (target, datetime column, feature impact) from the existing deployment. It must run before `pulumi up`.
 
-**What happens when using an existing deployment:**
+```bash
+source set_env.sh         # loads .env + activates .venv
+pulumi stack init <name>  # or: pulumi stack select <name>
+cd notebooks
+papermill train_model.ipynb /dev/null
+cd ..
+```
 
-- **Model Training**: Completely skipped - no new model is trained
-- **Data Ingestion**: Skipped - uses existing model's training data
-- **Metadata Extraction**: The notebook extracts target, datetime partition column, and other model metadata from your existing deployment
-- **Resource Creation**: Only creates the application frontend and LLM components (if enabled)
-- **Batch Prediction**: Not created (you'll need to set up your own if needed)
-- **Retraining Policy**: Not created (you'll need to set up your own if needed)
+This writes `forecastic/train_model_output.<stack-name>.yaml` — the config file the app reads at startup.
+
+**4. Deploy**
+
+```bash
+pulumi up
+```
+
+> **⚠️ Note:** When using an existing deployment, `pulumi up` skips batch prediction job and retraining policy creation. The app is wired to the deployment and scoring dataset you specified — no new DR resources are trained.
 
 ### Change the LLM
 

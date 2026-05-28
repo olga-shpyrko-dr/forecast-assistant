@@ -17,7 +17,6 @@ import sys
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from streamlit_theme import st_theme
 
 sys.path.append("..")
 
@@ -28,8 +27,10 @@ from forecastic.api import (
     get_filters,
     get_forecast_as_plotly_json,
     get_llm_summary,
+    get_pred_ex_stacked_bar_df,
     get_predictions,
     get_scoring_data,
+    get_scoring_dataset_versions,
     get_standardized_predictions,
 )
 from forecastic.i18n import gettext
@@ -61,21 +62,26 @@ def clean_column_headers(df: pd.DataFrame) -> pd.DataFrame:
 
 def set_title() -> None:
     """Set the title of the page"""
-
     with st.container(key="datarobot-logo"):
-        col1, _ = st.columns([1, 2])
-        theme = st_theme()
-        logo = '<svg width="133" height="20" xmlns="http://www.w3.org/2000/svg" id="datarobot-logo"></svg>'
-        if theme:
-            if theme.get("base") == "light":
-                logo = "./DataRobot_black.svg"
-            else:
-                logo = "./DataRobot_white.svg"
-        col1.image(logo, width=200)
-        st.markdown(
-            f"<h1 style='text-align: center;'>{app_settings.page_title}</h1>",
-            unsafe_allow_html=True,
-        )
+        logo_col, title_col = st.columns([1, 4])
+        with logo_col:
+            st.image("./DataRobot_white.svg", width=160)
+        with title_col:
+            st.markdown(
+                f"""
+                <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;
+                    text-transform:uppercase;letter-spacing:0.1em;
+                    color:#81FBA5;margin-bottom:2px;'>FORECAST ANALYSIS</p>
+                <h1 style='font-family:"DM Sans",sans-serif;font-weight:500;
+                    font-size:1.5rem;color:#FFFFFF;margin:0;letter-spacing:-0.01em;'>
+                    {app_settings.page_title}</h1>
+                """,
+                unsafe_allow_html=True,
+            )
+    st.markdown(
+        "<hr style='border:none;border-top:1px solid #1e1e1e;margin:12px 0 20px;'/>",
+        unsafe_allow_html=True,
+    )
 
 
 def fpa() -> None:
@@ -85,8 +91,21 @@ def fpa() -> None:
 
     if "filters" not in st.session_state:
         st.session_state["filters"] = get_filters()
+    if "dataset_versions" not in st.session_state:
+        st.session_state["dataset_versions"] = get_scoring_dataset_versions()
+
     with st.sidebar:
         with st.form(key="sidebar_form"):
+            versions = st.session_state["dataset_versions"]
+            version_labels = [v["label"] for v in versions]
+            st.selectbox(
+                label=gettext("Prediction Timestamp"),
+                options=version_labels,
+                index=0,
+                key="selected_version_label",
+                help=gettext("Select the dataset version to replay. Defaults to the latest."),
+            )
+
             st.subheader(gettext("Select Filters for the Forecast"))
 
             for filter_widget in st.session_state["filters"]:
@@ -109,6 +128,15 @@ def fpa() -> None:
         )
     if sidebarSubmit:
         with st.spinner(gettext("Processing forecast...")):
+            selected_label = st.session_state.get("selected_version_label")
+            selected_version = next(
+                (v for v in st.session_state["dataset_versions"] if v["label"] == selected_label),
+                st.session_state["dataset_versions"][0],
+            )
+            selected_version_id = (
+                None if selected_version["is_latest"] else selected_version["version_id"]
+            )
+
             series_selections = []
             for filter_widget in st.session_state["filters"]:
                 column_name = filter_widget.column_name
@@ -117,7 +145,10 @@ def fpa() -> None:
                     FilterSpec(column=column_name, selected_values=widget_value)
                 )
             try:
-                scoring_data = get_scoring_data(filter_selection=series_selections)
+                scoring_data = get_scoring_data(
+                    filter_selection=series_selections,
+                    version_id=selected_version_id,
+                )
                 st.session_state["scoring_data"] = scoring_data
             except ValueError as e:
                 st.error(str(e))
@@ -127,8 +158,11 @@ def fpa() -> None:
 
             st.session_state["forecast_processed"] = forecast_processed
 
+            stacked_bar_df = get_pred_ex_stacked_bar_df(forecast_raw)
+            st.session_state["stacked_bar_df"] = stacked_bar_df
             st.session_state["chart_json"] = get_forecast_as_plotly_json(
-                scoring_data, n_historical_records_to_display
+                scoring_data, n_historical_records_to_display,
+                stacked_bar_df=stacked_bar_df,
             )
 
         with st.spinner(gettext("Generating explanation...")):
@@ -154,12 +188,18 @@ def fpa() -> None:
 
     with explanationContainer:
         if "forecast_interpretation" in st.session_state:
-            st.subheader(gettext("**AI Generated Analysis:**"))
-            st.write(f"**{st.session_state['headline']}**")
+            st.markdown(
+                f"""
+                <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;
+                    text-transform:uppercase;letter-spacing:0.1em;
+                    color:#81FBA5;margin-bottom:6px;'>AI GENERATED ANALYSIS</p>
+                <p style='font-family:"DM Sans",sans-serif;font-size:1rem;font-weight:500;
+                    color:#FFFF54;margin-bottom:10px;'>
+                    {st.session_state['headline']}</p>
+                """,
+                unsafe_allow_html=True,
+            )
             st.write(st.session_state["forecast_interpretation"])
-        if "explanations_df" in st.session_state:
-            with st.expander(gettext("Important Features"), expanded=False):
-                st.write(st.session_state["explanations_df"])
 
 
 def _main() -> None:
