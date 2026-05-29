@@ -17,6 +17,8 @@ The forecast assistant is a customizable application template for building AI-po
 3. [Why build AI Apps with DataRobot app templates?](#why-build-ai-apps-with-datarobot-app-templates)
 4. [Make changes](#make-changes)
    - [Change the data and how the model is trained](#change-the-data-and-how-the-model-is-trained)
+   - [Use existing AI Catalog datasets](#use-existing-ai-catalog-datasets)
+   - [Use an existing forecast deployment](#use-an-existing-forecast-deployment)
    - [Disable the LLM](#disable-the-llm)
    - [Change the LLM](#change-the-llm)
    - [Change the front-end](#change-the-front-end)
@@ -152,28 +154,63 @@ Each template provides an end-to-end AI architecture, from raw inputs to deploye
 ## Make changes
 
 ### Change the data and how the model is trained
-1. Edit the following two notebooks:
-   - `notebooks/train_model.ipynb`: Handles training data ingest and preparation and model training settings.
-   - `notebooks/prep_scoring_data.ipynb`: Handles scoring data preparation (the data used to show forecasts in the front-end).
-   
-   The last cell of each notebook is required, as it writes outputs needed for the rest of the pipeline.
 
-**Recent improvements in `train_model.ipynb`:**
-- **Dual-mode operation**: The notebook now supports both training new models and using existing deployments
-- **Automatic metadata extraction**: When using an existing deployment, the notebook automatically extracts model metadata (target, datetime partition column, etc.)
-- **Flexible feature configuration**: Easy configuration of known-in-advance features for what-if analysis
-- **Error handling**: Improved error handling with fallback mechanisms for missing model metadata
+`notebooks/train_model.ipynb` drives all training-time configuration. The last cell of the notebook writes `forecastic/train_model_output.<stack>.yaml` which the app reads at startup — this file must exist before `pulumi up` or `task deploy` is run.
 
-2. Run the revised notebooks.
-3. Run `pulumi up` to update your stack with these changes.
+#### Adapting the notebook to your dataset
+
+Open `train_model.ipynb` and update the **Model Training** section (the `autopilotrun_args` cell) to match your dataset:
+
+| Setting | Where | What to change |
+|---|---|---|
+| `target` | `analyze_and_model_config` | The column you want to forecast |
+| `datetime_partition_column` | `datetime_partitioning_config` | Date/time column name |
+| `multiseries_id_columns` | `datetime_partitioning_config` | Series ID column(s); omit or set `[]` for single-series |
+| `feature_derivation_window_start/end` | `datetime_partitioning_config` | How far back the model looks |
+| `forecast_window_start/end` | `datetime_partitioning_config` | How far ahead to forecast |
+| `feature_settings_config` | `autopilotrun_args` | Known-in-advance features for what-if analysis |
+| `calendar_args` | separate variable | Remove entirely if your data has no holiday calendar |
+
+Also update the **Export settings** cell (`static_app_settings`) at the bottom of the notebook:
+- `graph_y_axis` — y-axis label for the chart
+- `filterable_categories` — sidebar filter columns (must exist in your scoring dataset); set `[]` for single-series
+- `page_title` — app title when training from scratch
+- `lower_bound_forecast_at_0` — set `False` if your target can go negative
+
+> **Tip:** Keep a copy of the original template as `train_model_TEMPLATE.ipynb` before customising. The file referenced by the pipeline is always `train_model.ipynb`.
+
+#### Running the notebook before deployment
+
 ```bash
-source set_env.sh  # On windows use `set_env.bat`
-pulumi up
-```  
-4. For a forecasting app that is continuously updated, consider running `prep_scoring_data.ipynb` on a schedule.
+source set_env.sh          # loads .env + activates .venv
+pulumi stack init <name>   # or: pulumi stack select <name>
+cd notebooks
+papermill train_model.ipynb /dev/null
+cd ..
+task deploy                # or: pulumi up
+```
+
+For a forecasting app that is continuously updated, consider running `prep_scoring_data.ipynb` on a schedule.
 
 ### Disable the LLM
 In `infra/settings_generative.py`: Set `LLM=None` to disable any generative output altogether.
+
+### Use existing AI Catalog datasets
+
+If your training or scoring data already exists in the DataRobot AI Catalog, you can skip the local CSV read and upload steps by setting the corresponding env vars in `.env`:
+
+| Variable | Notebook bypassed | Notes |
+|---|---|---|
+| `TRAINING_DATASET_ID` | `train_model.ipynb` data ingest + upload cells | Always uses the latest version of the dataset |
+| `FORECAST_SCORING_DATASET_ID` | `prep_scoring_data.ipynb` entirely (via `infra/__main__.py`) and within the notebook itself | Always uses the latest version |
+
+Both variables can be combined with `FORECAST_DEPLOYMENT_ID` or used independently when training a new model from an existing catalog dataset.
+
+```
+# .env example — train from catalog, score from catalog, no new deployment
+TRAINING_DATASET_ID=<your-training-dataset-id>
+FORECAST_SCORING_DATASET_ID=<your-scoring-dataset-id>
+```
 
 ### Use an existing forecast deployment
 
