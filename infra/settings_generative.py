@@ -13,6 +13,8 @@
 # limitations under the License.
 from __future__ import annotations
 
+from enum import Enum
+
 import datarobot as dr
 import pulumi_datarobot as datarobot
 from datarobot_pulumi_utils.schema.custom_models import (
@@ -32,8 +34,27 @@ from .settings_main import (
     project_name,
 )
 
-LLM = LLMs.AZURE_OPENAI_GPT_4_O_MINI
-if LLM is not None:
+class LLMBackend(str, Enum):
+    """How the app obtains LLM narrative completions."""
+
+    NONE = "none"
+    # Call Azure OpenAI from the Custom Application (no GenAI execution environment).
+    DIRECT_AZURE = "direct_azure"
+    # Original template path: Playground + LLM Blueprint + Custom Model in GenAI Moderations env.
+    DATAROBOT_GENAI = "datarobot_genai"
+
+
+# Default for STS / tenants without [GenAI] Python 3.12 with Moderations.
+LLM_BACKEND = LLMBackend.DIRECT_AZURE
+
+# Used for credential validation and (datarobot_genai) blueprint selection.
+LLM = (
+    LLMs.AZURE_OPENAI_GPT_4_O_MINI
+    if LLM_BACKEND != LLMBackend.NONE
+    else None
+)
+
+if LLM_BACKEND == LLMBackend.DATAROBOT_GENAI and LLM is not None:
     playground_args = PlaygroundArgs(
         resource_name=f"Forecasting Assistant Playground [{project_name}]",
     )

@@ -146,6 +146,20 @@ def get_credential_runtime_parameter_values(
     return credential_runtime_parameter_values
 
 
+def get_app_credential_runtime_parameter_values(
+    credentials: DRCredentials | None,
+) -> list[datarobot.ApplicationSourceRuntimeParameterValueArgs]:
+    """Map LLM credentials to Custom Application runtime parameters."""
+    return [
+        datarobot.ApplicationSourceRuntimeParameterValueArgs(
+            key=param.key,
+            type=param.type,
+            value=param.value,
+        )
+        for param in get_credential_runtime_parameter_values(credentials)
+    ]
+
+
 # Initialize the LLM client based on the selected LLM and its credential type
 def get_credentials(
     llm: LLMConfig | None, test_credentials: bool = True

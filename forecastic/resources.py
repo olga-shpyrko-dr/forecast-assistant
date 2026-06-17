@@ -24,7 +24,26 @@ from pydantic_settings import (
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
-from pydantic_settings.sources import parse_env_vars
+
+try:
+    from pydantic_settings.sources import parse_env_vars
+except ImportError:  # pydantic-settings >=2.6 on Codespace kernel
+    def parse_env_vars(
+        env_vars: Mapping[str, str | None],
+        case_sensitive: bool,
+        env_ignore_empty: bool,
+        env_parse_none_str: str | None,
+    ) -> Mapping[str, str | None]:
+        parsed = dict(env_vars)
+        if not case_sensitive:
+            parsed = {k.lower(): v for k, v in parsed.items()}
+        if env_ignore_empty:
+            parsed = {k: v for k, v in parsed.items() if v != ""}
+        if env_parse_none_str is not None:
+            parsed = {
+                k: (None if v == env_parse_none_str else v) for k, v in parsed.items()
+            }
+        return parsed
 
 
 class PulumiSettingsSource(EnvSettingsSource):

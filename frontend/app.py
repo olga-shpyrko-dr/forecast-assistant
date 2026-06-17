@@ -23,6 +23,7 @@ sys.path.append("..")
 from forecastic.api import (
     LLMNotAvailableException,
     get_app_settings,
+    get_chart_series_options,
     get_explain_df,
     get_filters,
     get_forecast_as_plotly_json,
@@ -31,7 +32,7 @@ from forecastic.api import (
     get_predictions,
     get_scoring_data,
     get_scoring_dataset_versions,
-    get_standardized_predictions,
+    predictions_for_display_series,
 )
 from forecastic.i18n import gettext
 from forecastic.schema import FilterSpec
@@ -82,6 +83,35 @@ def set_title() -> None:
         "<hr style='border:none;border-top:1px solid #1e1e1e;margin:12px 0 20px;'/>",
         unsafe_allow_html=True,
     )
+
+
+def _series_narrative_key(display_series: str | None) -> str:
+    return display_series if display_series is not None else ""
+
+
+def _build_series_narratives(
+    forecast_raw: list[dict],
+    chart_series_options: list[str],
+) -> tuple[dict[str, dict[str, str]], dict[str, pd.DataFrame]]:
+    """Generate LLM narrative and feature table per chart series."""
+    series_keys = chart_series_options if chart_series_options else [None]
+    narratives: dict[str, dict[str, str]] = {}
+    explanations: dict[str, pd.DataFrame] = {}
+
+    for series in series_keys:
+        key = _series_narrative_key(series)
+        series_predictions = predictions_for_display_series(forecast_raw, series)
+        explanations[key] = clean_column_headers(get_explain_df(series_predictions))
+        try:
+            forecast_summary = get_llm_summary(series_predictions)
+            narratives[key] = {
+                "headline": forecast_summary.headline,
+                "summary_body": forecast_summary.summary_body,
+            }
+        except LLMNotAvailableException:
+            continue
+
+    return narratives, explanations
 
 
 def fpa() -> None:
@@ -154,52 +184,81 @@ def fpa() -> None:
                 st.error(str(e))
                 st.stop()
             forecast_raw = get_predictions(scoring_data)
-            forecast_processed = get_standardized_predictions(scoring_data)
-
-            st.session_state["forecast_processed"] = forecast_processed
-
-            stacked_bar_df = get_pred_ex_stacked_bar_df(forecast_raw)
-            st.session_state["stacked_bar_df"] = stacked_bar_df
-            st.session_state["chart_json"] = get_forecast_as_plotly_json(
-                scoring_data, n_historical_records_to_display,
-                stacked_bar_df=stacked_bar_df,
+            st.session_state["forecast_raw"] = forecast_raw
+            chart_label, chart_series_options = get_chart_series_options(
+                series_selections
+            )
+            st.session_state["chart_series_label"] = chart_label
+            st.session_state["chart_series_options"] = chart_series_options
+            st.session_state["n_historical_records_to_display"] = (
+                n_historical_records_to_display
             )
 
         with st.spinner(gettext("Generating explanation...")):
-            try:
-                forecast_summary = get_llm_summary(forecast_raw)
-                st.session_state["headline"] = forecast_summary.headline
-                st.session_state["forecast_interpretation"] = (
-                    forecast_summary.summary_body
-                )
+            narratives, explanations = _build_series_narratives(
+                forecast_raw, chart_series_options
+            )
+            st.session_state["series_narratives"] = narratives
+            st.session_state["series_explanations"] = explanations
 
-            except LLMNotAvailableException:
-                pass
-        st.session_state["explanations_df"] = clean_column_headers(
-            get_explain_df(forecast_raw)
+    if "forecast_raw" in st.session_state:
+        chart_series_options = st.session_state.get("chart_series_options", [])
+        chart_series_label = st.session_state.get("chart_series_label") or gettext(
+            "Series"
         )
+        if len(chart_series_options) > 1:
+            display_series = st.selectbox(
+                chart_series_label,
+                options=chart_series_options,
+                index=0,
+                key="chart_series_select",
+            )
+        elif len(chart_series_options) == 1:
+            display_series = chart_series_options[0]
+        else:
+            display_series = None
 
-    if "chart_json" in st.session_state:
+        series_predictions = predictions_for_display_series(
+            st.session_state["forecast_raw"], display_series
+        )
+        stacked_bar_df = get_pred_ex_stacked_bar_df(series_predictions)
+        chart_json = get_forecast_as_plotly_json(
+            st.session_state["scoring_data"],
+            st.session_state["n_historical_records_to_display"],
+            predictions=st.session_state["forecast_raw"],
+            display_series=display_series,
+            stacked_bar_df=stacked_bar_df,
+        )
         chartContainer.plotly_chart(
-            go.Figure(st.session_state["chart_json"]),
+            go.Figure(chart_json),
             config=CHART_CONFIG,
             use_container_width=True,
         )
 
-    with explanationContainer:
-        if "forecast_interpretation" in st.session_state:
-            st.markdown(
-                f"""
-                <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;
-                    text-transform:uppercase;letter-spacing:0.1em;
-                    color:#81FBA5;margin-bottom:6px;'>AI GENERATED ANALYSIS</p>
-                <p style='font-family:"DM Sans",sans-serif;font-size:1rem;font-weight:500;
-                    color:#FFFF54;margin-bottom:10px;'>
-                    {st.session_state['headline']}</p>
-                """,
-                unsafe_allow_html=True,
+        narrative_key = _series_narrative_key(display_series)
+        with explanationContainer:
+            narrative = st.session_state.get("series_narratives", {}).get(
+                narrative_key
             )
-            st.write(st.session_state["forecast_interpretation"])
+            if narrative:
+                st.markdown(
+                    f"""
+                    <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;
+                        text-transform:uppercase;letter-spacing:0.1em;
+                        color:#81FBA5;margin-bottom:6px;'>AI GENERATED ANALYSIS</p>
+                    <p style='font-family:"DM Sans",sans-serif;font-size:1rem;font-weight:500;
+                        color:#FFFF54;margin-bottom:10px;'>
+                        {narrative['headline']}</p>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.write(narrative["summary_body"])
+            explanations_df = st.session_state.get("series_explanations", {}).get(
+                narrative_key
+            )
+            if explanations_df is not None:
+                with st.expander(gettext("Important Features"), expanded=False):
+                    st.write(explanations_df)
 
 
 def _main() -> None:

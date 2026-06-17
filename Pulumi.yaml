@@ -2,6 +2,9 @@
 name: forecast-assistant
 runtime:
   name: python
+  options:
+    toolchain: pip
+    virtualenv: .venv
 main: infra
 description: Forecast Assistant
 config:

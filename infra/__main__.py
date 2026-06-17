@@ -45,6 +45,7 @@ from infra import (
     settings_generative,
     settings_main,
 )
+from infra.settings_generative import LLMBackend
 from infra.settings_forecast_deployment import (
     get_deployment_args,
 )
@@ -54,12 +55,14 @@ from infra.settings_main import (
     scoring_prep_nb,
     scoring_prep_output_file,
 )
-from infra.settings_proxy_llm import CHAT_MODEL_NAME
 from utils.credentials import (
+    get_app_credential_runtime_parameter_values,
     get_credential_runtime_parameter_values,
     get_credentials,
 )
 from utils.papermill import run_notebook
+
+CHAT_MODEL_NAME = os.environ.get("CHAT_MODEL_NAME")
 
 TEXTGEN_DEPLOYMENT_ID = os.environ.get("TEXTGEN_DEPLOYMENT_ID") or None
 TEXTGEN_REGISTERED_MODEL_ID = os.environ.get("TEXTGEN_REGISTERED_MODEL_ID") or None
@@ -68,7 +71,10 @@ FORECAST_DEPLOYMENT_ID = os.environ.get("FORECAST_DEPLOYMENT_ID") or None
 # Set FORECAST_SCORING_DATASET_ID to use a pre-existing DR AI Catalog dataset for scoring
 SCORING_DATASET_ID = os.environ.get("FORECAST_SCORING_DATASET_ID") or None
 
-if settings_generative.LLM == LLMs.DEPLOYED_LLM:
+if (
+    settings_generative.LLM_BACKEND == LLMBackend.DATAROBOT_GENAI
+    and settings_generative.LLM == LLMs.DEPLOYED_LLM
+):
     pulumi.info(f"{TEXTGEN_DEPLOYMENT_ID=}")
     pulumi.info(f"{TEXTGEN_REGISTERED_MODEL_ID=}")
     if (TEXTGEN_DEPLOYMENT_ID is None) == (TEXTGEN_REGISTERED_MODEL_ID is None):  # XOR
@@ -185,29 +191,50 @@ app_runtime_parameters = [
     ),
 ]
 
-credentials: DRCredentials | None
+credentials: DRCredentials | None = None
 
-try:
-    credentials = get_credentials(settings_generative.LLM)
-except ValueError:
-    raise
-except TypeError:
-    pulumi.warn(
-        textwrap.dedent("""\
-        Failed to find credentials for LLM. Continuing deployment without LLM support.
+if settings_generative.LLM_BACKEND == LLMBackend.NONE:
+    pulumi.info("LLM narrative disabled (LLM_BACKEND=none).")
+elif settings_generative.LLM is not None:
+    try:
+        credentials = get_credentials(settings_generative.LLM)
+    except ValueError:
+        raise
+    except TypeError:
+        pulumi.warn(
+            textwrap.dedent("""\
+            Failed to find credentials for LLM. Continuing deployment without LLM support.
 
-        If you intended to provide credentials, please consult the Readme and follow the instructions.
-        """)
-    )
-    credentials = None
+            If you intended to provide credentials, please consult the Readme and follow the instructions.
+            """)
+        )
+        credentials = None
 
 credentials_runtime_parameters_values = get_credential_runtime_parameter_values(
     credentials
 )
+app_credential_runtime_parameters = get_app_credential_runtime_parameter_values(
+    credentials
+)
 
-if credentials is not None or (
-    settings_generative.LLM == LLMs.DEPLOYED_LLM
-    and (TEXTGEN_REGISTERED_MODEL_ID is not None or TEXTGEN_DEPLOYMENT_ID is not None)
+if settings_generative.LLM_BACKEND == LLMBackend.DIRECT_AZURE:
+    if app_credential_runtime_parameters:
+        pulumi.info(
+            "Using direct Azure OpenAI for LLM narrative (no GenAI execution environment)."
+        )
+        app_runtime_parameters.extend(app_credential_runtime_parameters)
+    else:
+        pulumi.warn(
+            "LLM_BACKEND=direct_azure but Azure OpenAI credentials were not found in .env. "
+            "Narrative will be unavailable until OPENAI_API_* runtime parameters are set."
+        )
+
+elif settings_generative.LLM_BACKEND == LLMBackend.DATAROBOT_GENAI and (
+    credentials is not None
+    or (
+        settings_generative.LLM == LLMs.DEPLOYED_LLM
+        and (TEXTGEN_REGISTERED_MODEL_ID is not None or TEXTGEN_DEPLOYMENT_ID is not None)
+    )
 ):
     playground = datarobot.Playground(
         use_case_id=use_case.id,

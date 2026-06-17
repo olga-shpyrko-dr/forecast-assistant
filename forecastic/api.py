@@ -28,12 +28,13 @@ import plotly.graph_objects as go
 import yaml
 from datarobot.errors import ClientError
 from datarobot_predict.deployment import predict
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 from plotly.subplots import make_subplots
 from pydantic import ValidationError
 
 sys.path.append("..")
 
+from forecastic.credentials import AzureOpenAICredentials
 from forecastic.i18n import gettext
 from forecastic.resources import (
     Application,
@@ -80,6 +81,80 @@ class LLMNotAvailableException(Exception):
     """Exception raised when the LLM is unavailable."""
 
 
+def _load_azure_openai_credentials() -> AzureOpenAICredentials | None:
+    try:
+        credentials = AzureOpenAICredentials()
+    except ValidationError:
+        return None
+    if not credentials.api_key or not credentials.azure_endpoint:
+        return None
+    if not credentials.azure_deployment:
+        return None
+    return credentials
+
+
+def _get_direct_azure_completion(
+    prompt: str,
+    temperature: float = 0,
+    system_prompt: Optional[str] = None,
+) -> str | None:
+    """Call Azure OpenAI chat completions directly (no GenAI execution environment)."""
+    credentials = _load_azure_openai_credentials()
+    if credentials is None:
+        return None
+    if system_prompt:
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+    else:
+        messages = [{"role": "user", "content": prompt}]
+    try:
+        client = AzureOpenAI(
+            api_key=credentials.api_key,
+            azure_endpoint=credentials.azure_endpoint.rstrip("/"),
+            api_version=credentials.api_version or "2024-08-01-preview",
+        )
+        resp = client.chat.completions.create(
+            messages=messages,  # type: ignore[arg-type]
+            model=credentials.azure_deployment,
+            temperature=temperature,
+        )
+        return str(resp.choices[0].message.content)
+    except Exception:
+        return None
+
+
+def _get_datarobot_deployment_completion(
+    prompt: str,
+    temperature: float = 0,
+    system_prompt: Optional[str] = None,
+) -> str:
+    """Call a DataRobot generative deployment via the OpenAI-compatible proxy."""
+    generative_deployment_id = GenerativeDeployment().id
+    if not generative_deployment_id:
+        raise LLMNotAvailableException("Generative deployment is not configured.")
+    dr_client = dr.client.get_client()
+    azure_client = OpenAI(
+        base_url=dr_client.endpoint.rstrip("/")
+        + f"/deployments/{generative_deployment_id}",
+        api_key=dr_client.token,
+    )
+    if system_prompt:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+    else:
+        messages = [{"role": "user", "content": prompt}]
+    resp = azure_client.chat.completions.create(
+        messages=messages,  # type: ignore[arg-type]
+        model="datarobot-deployed-llm",
+        temperature=temperature,
+    )
+    return str(resp.choices[0].message.content)
+
+
 def _get_completion(
     prompt: str,
     temperature: float = 0,
@@ -87,27 +162,19 @@ def _get_completion(
     llm_model_name: Optional[str] = None,
 ) -> str:
     """Generate LLM completion."""
-    generative_deployment_id = GenerativeDeployment().id
     try:
-        dr_client = dr.client.get_client()
-        azure_client = OpenAI(
-            base_url=dr_client.endpoint.rstrip("/")
-            + f"/deployments/{generative_deployment_id}",
-            api_key=dr_client.token,
-        )
-        if system_prompt:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ]
-        else:
-            messages = [{"role": "user", "content": prompt}]
-        resp = azure_client.chat.completions.create(
-            messages=messages,  # type: ignore[arg-type]
-            model="datarobot-deployed-llm",
+        direct = _get_direct_azure_completion(
+            prompt=prompt,
             temperature=temperature,
+            system_prompt=system_prompt,
         )
-        return str(resp.choices[0].message.content)
+        if direct is not None:
+            return direct
+        return _get_datarobot_deployment_completion(
+            prompt=prompt,
+            temperature=temperature,
+            system_prompt=system_prompt,
+        )
     except Exception as e:
         raise LLMNotAvailableException("LLM is unavailable.") from e
 
@@ -198,6 +265,49 @@ def _get_scoring_data(version_id: Optional[str] = None) -> pd.DataFrame:
         f"datasets/{scoring_dataset_id}/versions/{version_id}/file/", stream=True
     )
     return pd.read_csv(io.StringIO(response.text))
+
+
+def get_chart_series_options(
+    filter_selection: List[FilterSpec],
+) -> tuple[str | None, list[str]]:
+    """Label and sidebar selection order for the chart series picker."""
+    multiseries_col = app_settings.multiseries_id_column
+    display_name_by_column = {
+        category.column_name: category.display_name
+        for category in app_settings.filterable_categories
+    }
+    for spec in filter_selection:
+        if spec.column == multiseries_col and spec.selected_values:
+            return display_name_by_column.get(multiseries_col, multiseries_col), list(
+                spec.selected_values
+            )
+    for spec in filter_selection:
+        if spec.selected_values:
+            return display_name_by_column.get(spec.column, spec.column), list(
+                spec.selected_values
+            )
+    return None, []
+
+
+def _filter_records_by_series(
+    records: list[dict[str, Any]], series_value: str
+) -> list[dict[str, Any]]:
+    multiseries_col = app_settings.multiseries_id_column
+    series_token = str(series_value)
+    return [
+        row
+        for row in records
+        if str(row.get(multiseries_col)) == series_token
+    ]
+
+
+def predictions_for_display_series(
+    predictions: list[dict[str, Any]], display_series: str | None
+) -> list[dict[str, Any]]:
+    """Return prediction rows for one chart series, or all rows if unset."""
+    if display_series is None:
+        return predictions
+    return _filter_records_by_series(predictions, display_series)
 
 
 def get_scoring_data(
@@ -454,30 +564,56 @@ def get_forecast_as_plotly_json(
     scoring_data: list[dict[str, Any]],
     n_historical_records_to_display: int,
     stacked_bar_df: Optional[pd.DataFrame] = None,
+    predictions: list[dict[str, Any]] | None = None,
+    display_series: str | None = None,
 ) -> dict[str, Any]:
     """
     Render the forecast chart as a Plotly figure.
 
-    When `stacked_bar_df` is provided, returns a combined 2×2 layout:
-    - top-left: condensed history; top-right: expanded forecast
-    - bottom-right: XEMP stacked bar aligned with forecast x-axis
-    When `stacked_bar_df` is None, returns a simple single-row chart.
+    When ``display_series`` is set, history and forecast show that series only.
+    When ``stacked_bar_df`` is provided, returns a combined 2×2 layout with XEMP
+    stacked bar; otherwise a simple single-row chart.
     """
 
     datetime_partition_column = app_settings.datetime_partition_column
     target = app_settings.target
 
-    forecast = pd.DataFrame(
-        [i.model_dump() for i in get_standardized_predictions(scoring_data)]
+    chart_scoring_data = scoring_data
+    chart_predictions = (
+        predictions if predictions is not None else get_predictions(scoring_data)
     )
-    history = _aggregate_scoring_data(scoring_data).tail(n_historical_records_to_display)
+    if display_series is not None:
+        chart_scoring_data = _filter_records_by_series(scoring_data, display_series)
+        chart_predictions = _filter_records_by_series(chart_predictions, display_series)
+
+    forecast = pd.DataFrame(
+        [i.model_dump() for i in _process_predictions(chart_predictions)]
+    )
+    history = _aggregate_scoring_data(chart_scoring_data).tail(
+        n_historical_records_to_display
+    )
 
     actual_col = f"{target} (actual)" if f"{target} (actual)" in history.columns else target
+    series_suffix = f" ({display_series})" if display_series is not None else ""
+    history_name = gettext("{target} History{suffix}").format(
+        target=target, suffix=series_suffix
+    )
+    forecast_name = (
+        gettext("{target} Forecast{suffix}").format(target=target, suffix=series_suffix)
+        if display_series is not None
+        else gettext("Total {target} Forecast").format(target=target)
+    )
 
     if stacked_bar_df is not None:
         return _build_combined_figure(
-            history, forecast, stacked_bar_df, actual_col,
-            target, datetime_partition_column,
+            history,
+            forecast,
+            stacked_bar_df,
+            actual_col,
+            target,
+            datetime_partition_column,
+            history_name=history_name,
+            forecast_name=forecast_name,
         )
 
     # ── Fallback: simple single-row chart ────────────────────────────────
@@ -486,7 +622,7 @@ def get_forecast_as_plotly_json(
     fig.add_trace(go.Scatter(
         x=history.timestamp, y=history[actual_col],
         mode="lines+markers",
-        name=gettext("{target} History").format(target=target),
+        name=history_name,
         line=dict(color="#81FBA5", width=1.5),
         marker=dict(color="#81FBA5", size=5, symbol="circle"),
     ))
@@ -504,7 +640,7 @@ def get_forecast_as_plotly_json(
     fig.add_trace(go.Scatter(
         x=forecast["date_id"], y=forecast["prediction"],
         mode="lines+markers",
-        name=gettext("Total {target} Forecast").format(target=target),
+        name=forecast_name,
         line=dict(color="#44BFFC", width=1.5),
         marker=dict(color="#44BFFC", size=5, symbol="circle"),
     ))
@@ -537,8 +673,15 @@ def _build_combined_figure(
     actual_col: str,
     target: str,
     datetime_partition_column: str,
+    history_name: str | None = None,
+    forecast_name: str | None = None,
 ) -> dict[str, Any]:
     """2×2 combined layout: history | forecast / empty | stacked bar."""
+
+    if history_name is None:
+        history_name = gettext("{target} History").format(target=target)
+    if forecast_name is None:
+        forecast_name = gettext("Total {target} Forecast").format(target=target)
 
     n_history = max(history[actual_col].notna().sum(), 1)
     n_forecast = max(len(forecast), 1)
@@ -564,7 +707,7 @@ def _build_combined_figure(
     fig.add_trace(go.Scatter(
         x=history_actual.timestamp, y=history_actual[actual_col],
         mode="lines+markers",
-        name=gettext("{target} History").format(target=target),
+        name=history_name,
         line=dict(color="#81FBA5", width=1.5),
         marker=dict(color="#81FBA5", size=5, symbol="circle"),
         legend="legend",
@@ -588,7 +731,7 @@ def _build_combined_figure(
     fig.add_trace(go.Scatter(
         x=forecast["date_id"], y=forecast["prediction"],
         mode="lines+markers",
-        name=gettext("Total {target} Forecast").format(target=target),
+        name=forecast_name,
         line=dict(color="#44BFFC", width=1.5),
         marker=dict(color="#44BFFC", size=5, symbol="circle"),
         legend="legend",
