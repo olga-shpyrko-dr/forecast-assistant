@@ -49,6 +49,13 @@ class StaticAppSettings(BaseModel):
     lower_bound_forecast_at_0: bool
     filterable_categories: list[CategoryFilter]
     headline_prompt: str
+    llm_commentary_enabled: bool = Field(
+        default=True,
+        description=(
+            "When False, AI commentary is disabled in the deployed app "
+            "(checkbox greyed out, no LLM calls)."
+        ),
+    )
 
 
 class AppSettings(BaseModel):
@@ -106,6 +113,7 @@ class AppSettings(BaseModel):
     graph_y_axis: str
     page_title: str
     headline_prompt: str
+    llm_commentary_enabled: bool = True
     model_config = ConfigDict(protected_namespaces=())
 
     @classmethod
@@ -191,6 +199,7 @@ class AppSettings(BaseModel):
             graph_y_axis=static_app_settings.graph_y_axis,
             page_title=static_app_settings.page_title,
             headline_prompt=static_app_settings.headline_prompt,
+            llm_commentary_enabled=static_app_settings.llm_commentary_enabled,
         )
 
     @classmethod

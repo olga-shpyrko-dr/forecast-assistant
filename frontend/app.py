@@ -33,6 +33,7 @@ from forecastic.api import (
     get_predictions,
     get_scoring_data,
     get_scoring_dataset_versions,
+    is_llm_commentary_available,
     predictions_for_display_series,
 )
 from forecastic.i18n import gettext
@@ -93,6 +94,7 @@ def _series_narrative_key(display_series: str | None) -> str:
 def _build_series_narratives(
     forecast_raw: list[dict],
     chart_series_options: list[str],
+    include_llm: bool = True,
 ) -> tuple[dict[str, dict[str, str]], dict[str, pd.DataFrame]]:
     """Generate LLM narrative and feature table per chart series."""
     series_keys = chart_series_options if chart_series_options else [None]
@@ -103,6 +105,8 @@ def _build_series_narratives(
         key = _series_narrative_key(series)
         series_predictions = predictions_for_display_series(forecast_raw, series)
         explanations[key] = clean_column_headers(get_explain_df(series_predictions))
+        if not include_llm:
+            continue
         try:
             forecast_summary = get_llm_summary(series_predictions)
             narratives[key] = {
@@ -158,6 +162,27 @@ def fpa() -> None:
             value=min(200, app_settings.maximum_default_display_length),
             step=10,
         )
+
+        llm_available = is_llm_commentary_available()
+        if not app_settings.llm_commentary_enabled:
+            commentary_help = gettext(
+                "AI commentary is disabled in application settings."
+            )
+        elif not llm_available:
+            commentary_help = gettext(
+                "LLM is not configured for this deployment (missing credentials)."
+            )
+        else:
+            commentary_help = gettext(
+                "Show or hide the AI-generated forecast narrative below the chart."
+            )
+        st.checkbox(
+            gettext("Show AI commentary"),
+            value=llm_available,
+            disabled=not llm_available,
+            key="show_llm_commentary",
+            help=commentary_help,
+        )
     if sidebarSubmit:
         with st.spinner(gettext("Processing forecast...")):
             selected_label = st.session_state.get("selected_version_label")
@@ -201,8 +226,12 @@ def fpa() -> None:
             )
 
         with st.spinner(gettext("Generating explanation...")):
+            include_llm = (
+                is_llm_commentary_available()
+                and st.session_state.get("show_llm_commentary", False)
+            )
             narratives, explanations = _build_series_narratives(
-                forecast_raw, chart_series_options
+                forecast_raw, chart_series_options, include_llm=include_llm
             )
             st.session_state["series_narratives"] = narratives
             st.session_state["series_explanations"] = explanations
@@ -244,23 +273,28 @@ def fpa() -> None:
         )
 
         narrative_key = _series_narrative_key(display_series)
+        show_commentary = (
+            is_llm_commentary_available()
+            and st.session_state.get("show_llm_commentary", False)
+        )
         with explanationContainer:
-            narrative = st.session_state.get("series_narratives", {}).get(
-                narrative_key
-            )
-            if narrative:
-                st.markdown(
-                    f"""
-                    <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;
-                        text-transform:uppercase;letter-spacing:0.1em;
-                        color:#81FBA5;margin-bottom:6px;'>AI GENERATED ANALYSIS</p>
-                    <p style='font-family:"DM Sans",sans-serif;font-size:1rem;font-weight:500;
-                        color:#FFFF54;margin-bottom:10px;'>
-                        {narrative['headline']}</p>
-                    """,
-                    unsafe_allow_html=True,
+            if show_commentary:
+                narrative = st.session_state.get("series_narratives", {}).get(
+                    narrative_key
                 )
-                st.write(narrative["summary_body"])
+                if narrative:
+                    st.markdown(
+                        f"""
+                        <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;
+                            text-transform:uppercase;letter-spacing:0.1em;
+                            color:#81FBA5;margin-bottom:6px;'>AI GENERATED ANALYSIS</p>
+                        <p style='font-family:"DM Sans",sans-serif;font-size:1rem;font-weight:500;
+                            color:#FFFF54;margin-bottom:10px;'>
+                            {narrative['headline']}</p>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    st.write(narrative["summary_body"])
             explanations_df = st.session_state.get("series_explanations", {}).get(
                 narrative_key
             )

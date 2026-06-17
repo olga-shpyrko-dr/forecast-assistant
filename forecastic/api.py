@@ -184,6 +184,18 @@ def get_app_settings() -> AppSettings:
     return app_settings
 
 
+def is_llm_commentary_available() -> bool:
+    """True when app config allows LLM commentary and runtime credentials exist."""
+    if not app_settings.llm_commentary_enabled:
+        return False
+    if _load_azure_openai_credentials() is not None:
+        return True
+    try:
+        return bool(GenerativeDeployment().id)
+    except ValidationError:
+        return False
+
+
 def _get_app_urls() -> AppUrls:
     base_url = urljoin(dr.Client().endpoint, "..")
     dataset_url = (
