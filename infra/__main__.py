@@ -214,7 +214,7 @@ credentials_runtime_parameters_values = get_credential_runtime_parameter_values(
     credentials
 )
 app_credential_runtime_parameters = get_app_credential_runtime_parameter_values(
-    credentials
+    credentials, credentials_runtime_parameters_values
 )
 
 if settings_generative.LLM_BACKEND == LLMBackend.DIRECT_AZURE:
