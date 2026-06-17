@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import colorsys
 import datetime as dt
 import functools
 import io
@@ -539,6 +540,72 @@ BAR_COLORS = [
     "#5C41FF", "#61DFCF", "#BFFD7E", "#8AC2D5",
 ]
 
+_HOVERLABEL = dict(
+    bgcolor="#141414",
+    font=dict(family="DM Sans", size=13, color="#E4E4E4"),
+    bordercolor="#2a2a2a",
+    namelength=-1,
+    align="left",
+)
+
+
+def _feature_group_name(feature: str) -> str:
+    """Original feature name before the first derivation segment.
+
+    DataRobot derived features use ``<Original> <derivation> ...`` — the group
+    is the substring before the first `` (`` (space + opening parenthesis).
+    """
+    paren_idx = feature.find(" (")
+    if paren_idx >= 0:
+        return feature[:paren_idx].strip()
+    return feature.strip()
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def _rgb_to_hex(red: float, green: float, blue: float) -> str:
+    return f"#{int(red * 255):02x}{int(green * 255):02x}{int(blue * 255):02x}"
+
+
+def _shade_hex(base_hex: str, shade_index: int, group_size: int) -> str:
+    """Return a lighter/darker variant of ``base_hex`` for derivations in one group."""
+    if group_size <= 1:
+        return base_hex
+    red, green, blue = _hex_to_rgb(base_hex)
+    hue, lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
+    # Spread lightness across group members while keeping hue aligned.
+    lightness = 0.32 + (shade_index / (group_size - 1)) * 0.36
+    saturation = min(max(saturation, 0.45), 0.9)
+    red2, green2, blue2 = colorsys.hls_to_rgb(hue, lightness, saturation)
+    return _rgb_to_hex(red2, green2, blue2)
+
+
+def build_feature_color_map(features: list[str] | set[str]) -> dict[str, str]:
+    """Stable feature → color map; derivations of the same original share a hue."""
+    unique_features = sorted(set(features))
+    groups: dict[str, list[str]] = {}
+    for feature in unique_features:
+        groups.setdefault(_feature_group_name(feature), []).append(feature)
+
+    color_map: dict[str, str] = {}
+    for group_index, group_name in enumerate(sorted(groups)):
+        base_color = BAR_COLORS[group_index % len(BAR_COLORS)]
+        group_features = sorted(groups[group_name])
+        for feature_index, feature in enumerate(group_features):
+            color_map[feature] = _shade_hex(base_color, feature_index, len(group_features))
+    return color_map
+
+
+def _feature_bar_color(
+    feature: str, feature_color_map: dict[str, str] | None
+) -> str:
+    if feature_color_map is not None and feature in feature_color_map:
+        return feature_color_map[feature]
+    return BAR_COLORS[abs(hash(feature)) % len(BAR_COLORS)]
+
 _AXIS_STYLE = dict(
     color="#A2A2A2",
     showgrid=True,
@@ -552,11 +619,7 @@ _LAYOUT_BASE = dict(
     plot_bgcolor="#111111",
     paper_bgcolor="#0B0B0B",
     font=dict(family="DM Sans", color="#E4E4E4"),
-    hoverlabel=dict(
-        bgcolor="#141414",
-        font=dict(family="DM Sans", size=12, color="#E4E4E4"),
-        bordercolor="#2a2a2a",
-    ),
+    hoverlabel=_HOVERLABEL,
 )
 
 
@@ -566,6 +629,7 @@ def get_forecast_as_plotly_json(
     stacked_bar_df: Optional[pd.DataFrame] = None,
     predictions: list[dict[str, Any]] | None = None,
     display_series: str | None = None,
+    feature_color_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Render the forecast chart as a Plotly figure.
@@ -614,6 +678,7 @@ def get_forecast_as_plotly_json(
             datetime_partition_column,
             history_name=history_name,
             forecast_name=forecast_name,
+            feature_color_map=feature_color_map,
         )
 
     # ── Fallback: simple single-row chart ────────────────────────────────
@@ -675,6 +740,7 @@ def _build_combined_figure(
     datetime_partition_column: str,
     history_name: str | None = None,
     forecast_name: str | None = None,
+    feature_color_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """2×2 combined layout: history | forecast / empty | stacked bar."""
 
@@ -738,15 +804,16 @@ def _build_combined_figure(
     ), row=1, col=2)
 
     # ── Bottom-right: stacked bar (XEMP) ────────────────────────────────
-    for i, feat in enumerate(stacked_bar_df["feature"].unique()):
+    for feat in sorted(stacked_bar_df["feature"].unique()):
         feat_data = stacked_bar_df[stacked_bar_df["feature"] == feat]
         fig.add_trace(go.Bar(
             x=feat_data["date_id"],
             y=feat_data["strength"],
             name=feat,
-            marker_color=BAR_COLORS[i % len(BAR_COLORS)],
+            marker_color=_feature_bar_color(feat, feature_color_map),
             legend="legend2",
             showlegend=True,
+            hoverlabel=_HOVERLABEL,
         ), row=2, col=2)
 
     # ── Axis styling ─────────────────────────────────────────────────────

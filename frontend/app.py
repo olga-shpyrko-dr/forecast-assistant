@@ -22,6 +22,7 @@ sys.path.append("..")
 
 from forecastic.api import (
     LLMNotAvailableException,
+    build_feature_color_map,
     get_app_settings,
     get_chart_series_options,
     get_explain_df,
@@ -116,6 +117,7 @@ def _build_series_narratives(
 
 def fpa() -> None:
     set_title()
+    selectorContainer = st.container()
     chartContainer = st.container()
     explanationContainer = st.container()
 
@@ -193,6 +195,10 @@ def fpa() -> None:
             st.session_state["n_historical_records_to_display"] = (
                 n_historical_records_to_display
             )
+            all_stacked = get_pred_ex_stacked_bar_df(forecast_raw)
+            st.session_state["feature_color_map"] = build_feature_color_map(
+                all_stacked["feature"].tolist()
+            )
 
         with st.spinner(gettext("Generating explanation...")):
             narratives, explanations = _build_series_narratives(
@@ -206,17 +212,18 @@ def fpa() -> None:
         chart_series_label = st.session_state.get("chart_series_label") or gettext(
             "Series"
         )
-        if len(chart_series_options) > 1:
-            display_series = st.selectbox(
-                chart_series_label,
-                options=chart_series_options,
-                index=0,
-                key="chart_series_select",
-            )
-        elif len(chart_series_options) == 1:
-            display_series = chart_series_options[0]
-        else:
-            display_series = None
+        with selectorContainer:
+            if len(chart_series_options) > 1:
+                display_series = st.selectbox(
+                    chart_series_label,
+                    options=chart_series_options,
+                    index=0,
+                    key="chart_series_select",
+                )
+            elif len(chart_series_options) == 1:
+                display_series = chart_series_options[0]
+            else:
+                display_series = None
 
         series_predictions = predictions_for_display_series(
             st.session_state["forecast_raw"], display_series
@@ -228,6 +235,7 @@ def fpa() -> None:
             predictions=st.session_state["forecast_raw"],
             display_series=display_series,
             stacked_bar_df=stacked_bar_df,
+            feature_color_map=st.session_state.get("feature_color_map"),
         )
         chartContainer.plotly_chart(
             go.Figure(chart_json),
