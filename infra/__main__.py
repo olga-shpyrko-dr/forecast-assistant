@@ -169,6 +169,13 @@ else:
         "Skipping batch prediction job and retraining policy creation for existing deployment"
     )
 
+_AZURE_OPENAI_VARS = [
+    "AZURE_OPENAI_ENDPOINT",
+    "AZURE_OPENAI_API_KEY",
+    "AZURE_OPENAI_DEPLOYMENT_NAME",
+    "AZURE_OPENAI_API_VERSION",
+]
+
 app_runtime_parameters = [
     datarobot.ApplicationSourceRuntimeParameterValueArgs(
         key=time_series_deployment_env_name,
@@ -183,6 +190,12 @@ app_runtime_parameters = [
     datarobot.ApplicationSourceRuntimeParameterValueArgs(
         key="APP_LOCALE", type="string", value=LocaleSettings().app_locale
     ),
+] + [
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key=var, type="string", value=os.environ[var]
+    )
+    for var in _AZURE_OPENAI_VARS
+    if os.environ.get(var)
 ]
 
 credentials: DRCredentials | None
