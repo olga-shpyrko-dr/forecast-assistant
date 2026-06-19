@@ -1,0 +1,123 @@
+calendar_id: null
+date_format: '%Y-%m-%d'
+datetime_partition_column: START_OF_WEEK
+datetime_partition_column_transformed: START_OF_WEEK (actual)
+feature_derivation_window_end: 0
+feature_derivation_window_start: -6
+filterable_categories: []
+forecast_window_end: 13
+forecast_window_start: 1
+graph_y_axis: Sales ($)
+headline_prompt: 'You are a data analyst and your job is to explain to non-technical
+  executive business leaders what the data suggests
+
+  Executive leadership will provide a sales forecast and you will interpret it and
+  summarize the outlook, highlighting key insights.
+
+  Your response should be only 1 sentence long, not very wordy. It should be like
+  a news headline. Do not put quotation marks around it.
+
+  Your response, while insightful, should speak to the general direction of the forecast.'
+important_features:
+- featureName: DAY_OF_YEAR (actual)
+  impactNormalized: 1.0
+- featureName: ADDON (actual)
+  impactNormalized: 0.8330012561777759
+- featureName: ASA (actual)
+  impactNormalized: 0.7487720694257914
+- featureName: Holidays (actual)
+  impactNormalized: 0.31116254287683187
+- featureName: NEW CUSTOMER (actual)
+  impactNormalized: 0.25385788235973283
+- featureName: SKILL_OFFERED_SUM (6 week std)
+  impactNormalized: 0.2456091403914397
+- featureName: MIGRATION WITH CPE (actual)
+  impactNormalized: 0.23914906188497678
+- featureName: SKILL_OFFERED_SUM (acceleration)
+  impactNormalized: 0.2363951840664136
+- featureName: Zomer (actual)
+  impactNormalized: 0.20707893659926277
+- featureName: TECH SWAP (actual)
+  impactNormalized: 0.18473894584837214
+- featureName: WEEK_OF_YEAR (6 week mean)
+  impactNormalized: 0.1457966914955051
+- featureName: CHURN (actual)
+  impactNormalized: 0.14486800679126366
+- featureName: SKILL_OFFERED_SUM (6 week median)
+  impactNormalized: 0.13566758038079255
+- featureName: SKILL_OFFERED_SUM (3rd lag)
+  impactNormalized: 0.13546016868353195
+- featureName: SKILL_OFFERED_SUM (5th lag)
+  impactNormalized: 0.12858485638278982
+- featureName: MSTB (actual)
+  impactNormalized: 0.10500389033450132
+- featureName: SKILL_OFFERED_SUM (6 week mean)
+  impactNormalized: 0.10486563216804506
+- featureName: MIGRATION WITHOU CPE (actual)
+  impactNormalized: 0.09967420809759822
+- featureName: START_OF_WEEK (Month) (actual)
+  impactNormalized: 0.09275655744439887
+- featureName: SKILL_OFFERED_SUM (2nd lag)
+  impactNormalized: 0.06354024198403134
+- featureName: SKILL_OFFERED_SUM (velocity)
+  impactNormalized: 0.05979146453411637
+- featureName: SKILL_OFFERED_SUM (4th lag)
+  impactNormalized: 0.05709187541817002
+lower_bound_forecast_at_0: true
+maximum_default_display_length: 130
+model_id: 69c3d334974b5fd84d70a3dd
+model_name: eXtreme Gradient Boosted Trees Regressor with Early Stopping (learning
+  rate =0.3)
+multiseries_id_column: null
+page_description: This application forecasts the sale revenue of a national retailer.
+  The forecast can be focused by region, market, or store.
+page_title: 'Forecast Analyst: WFM FORECAST TIME SERIES TEST MONITORING'
+prediction_interval: 80
+project_id: 69c3d18de258ad6362d7928b
+registered_model_id: 6a0ec3ac204b1c62353329ec
+registered_model_version_id: 6a0ec3ac204b1c62353329f5
+target: SKILL_OFFERED_SUM
+timestep_settings: {}
+training_dataset_id: 698b0a899b3b03d46cfe03dc
+use_case_id: 6a1857800532c3d3b822b8b5
+what_if_features:
+- do_not_derive: null
+  feature_name: ASA
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: CHURN
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: Kerst
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: MIGRATION WITH CPE
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: MSTB
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: Mei
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: NEW CUSTOMER
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: TECH SWAP
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: Voorjaar
+  known_in_advance: true
+  values: []
+- do_not_derive: null
+  feature_name: Zomer
+  known_in_advance: true
+  values: []
