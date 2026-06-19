@@ -358,12 +358,12 @@ def build_xemp_bar(
         font=dict(family="Fragment Mono, monospace", size=9, color="#81FBA5"),
     )
 
-    xaxis_kw = dict(
+    xaxis_kw = {
         **_AXIS_STYLE,
-        type="category",
-        tickangle=-40,
-        tickfont=dict(size=10),
-    )
+        "type": "category",
+        "tickangle": -40,
+        "tickfont": dict(family="DM Sans", size=10, color="#A2A2A2"),
+    }
     fig.update_layout(
         **_LAYOUT_BASE,
         height=480,

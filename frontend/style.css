@@ -78,8 +78,11 @@ button[data-testid="baseButton-secondaryFormSubmit"]:hover {
     color: #0B0B0B !important;
 }
 
-button[data-testid="baseButton-primary"] {
+button[data-testid="baseButton-primary"],
+section[data-testid="stSidebar"] button[data-testid="baseButton-primary"],
+.stButton > button[data-testid="baseButton-primary"] {
     background: #0B0B0B !important;
+    background-color: #0B0B0B !important;
     color: #FFFFFF !important;
     border: 2px solid #81FBA5 !important;
     font-family: 'DM Sans', sans-serif !important;
@@ -88,8 +91,11 @@ button[data-testid="baseButton-primary"] {
     letter-spacing: 0.02em !important;
 }
 
-button[data-testid="baseButton-primary"]:hover {
+button[data-testid="baseButton-primary"]:hover,
+section[data-testid="stSidebar"] button[data-testid="baseButton-primary"]:hover,
+.stButton > button[data-testid="baseButton-primary"]:hover {
     background: #81FBA5 !important;
+    background-color: #81FBA5 !important;
     color: #0B0B0B !important;
 }
 
