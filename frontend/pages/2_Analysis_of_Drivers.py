@@ -346,6 +346,14 @@ def feature_comparison_page() -> None:
     available_series: list[str] = st.session_state.get("available_series", [])
     forecast_dates: list[str] = st.session_state.get("forecast_dates", [])
 
+    # ── Pre-set selector defaults on first render / when forecast data changes ─
+    _run_key = tuple(forecast_dates[:3]) if forecast_dates else ()
+    if st.session_state.get("_selector_run_key") != _run_key:
+        st.session_state["_selector_run_key"] = _run_key
+        if forecast_dates:
+            st.session_state["selected_week"] = [forecast_dates[0]]
+        st.session_state["selected_distance"] = "4 weeks ahead"
+
     # ── Selectors (series + forecast week + forecast distance) ───────────────
     sel_col1, sel_col2, sel_col3 = st.columns([1, 2, 2])
     with sel_col1:
