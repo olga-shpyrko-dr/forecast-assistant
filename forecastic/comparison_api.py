@@ -397,12 +397,19 @@ def build_comparison_chart(
                     x0=str(week_dt), x1=str(week_dt + pd.Timedelta(days=7)),
                     fillcolor=color, layer="below", line_width=0,
                 )
-        # Weather legend annotations
-        fig.add_annotation(
-            text="▐ storm  ▐ wind  ▐ heavy rain", xref="paper", yref="paper",
-            x=1.0, y=1.04, xanchor="right", yanchor="bottom", showarrow=False,
-            font=dict(family="Fragment Mono, monospace", size=8, color="#6C6A6B"),
-        )
+        # Weather legend — three separate annotations so each uses its event colour
+        _legend_items = [
+            ("▐ storm",      "#FF8C00"),
+            ("▐ wind/snow",  "#44BFFC"),
+            ("▐ heavy rain", "#909BF5"),
+        ]
+        for _i, (_label, _color) in enumerate(reversed(_legend_items)):
+            fig.add_annotation(
+                text=_label, xref="paper", yref="paper",
+                x=1.0 - _i * 0.13, y=1.04,
+                xanchor="right", yanchor="bottom", showarrow=False,
+                font=dict(family="Fragment Mono, monospace", size=10, color=_color),
+            )
 
     fig.update_xaxes(**_AXIS_STYLE, title_text=datetime_col, type="date")
     fig.update_yaxes(**_AXIS_STYLE, title_text=app_settings.graph_y_axis)
