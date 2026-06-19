@@ -72,6 +72,13 @@ def get_available_series(planned_df: pd.DataFrame, actual_df: pd.DataFrame) -> l
     return sorted(planned | actual)
 
 
+def get_forecast_distances(preds: list[dict]) -> list[int]:
+    """Return sorted unique forecast steps (1–13) present in prediction records."""
+    if not preds or "forecast_step" not in preds[0]:
+        return []
+    return sorted({int(r["forecast_step"]) for r in preds if r.get("forecast_step") is not None})
+
+
 def get_forecast_dates(planned_preds: list[dict], actual_preds: list[dict]) -> list[str]:
     date_col = app_settings.datetime_partition_column
     dates = {str(r[date_col])[:10] for r in planned_preds} | {str(r[date_col])[:10] for r in actual_preds}

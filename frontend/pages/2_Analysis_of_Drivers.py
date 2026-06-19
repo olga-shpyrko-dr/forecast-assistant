@@ -53,6 +53,7 @@ from forecastic.comparison_api import (
     get_available_series,
     get_comparison_llm_summary,
     get_forecast_dates,
+    get_forecast_distances,
     load_from_catalog,
     run_predictions,
 )
@@ -151,10 +152,10 @@ def _load_from_cache(
     input_feature_cols = [c for c in cache_df.columns if c not in meta_cols and c not in pred_cols]
 
     planned_recs = (
-        w[w["scenario"] == "planned"].drop(columns=["prediction_week", "scenario", "forecast_step"], errors="ignore").to_dict("records")
+        w[w["scenario"] == "planned"].drop(columns=["scenario"], errors="ignore").to_dict("records")
     )
     actual_recs = (
-        w[w["scenario"] == "actual"].drop(columns=["prediction_week", "scenario", "forecast_step"], errors="ignore").to_dict("records")
+        w[w["scenario"] == "actual"].drop(columns=["scenario"], errors="ignore").to_dict("records")
     )
     planned_input_df = w[w["scenario"] == "planned"][input_feature_cols].copy()
     actual_input_df  = w[w["scenario"] == "actual"][input_feature_cols].copy()
@@ -328,11 +329,10 @@ def feature_comparison_page() -> None:
     available_series: list[str] = st.session_state.get("available_series", [])
     forecast_dates: list[str] = st.session_state.get("forecast_dates", [])
 
-    # ── Selectors (series + forecast week) ────────────────────────────────────
-    sel_col1, sel_col2 = st.columns([1, 2])
+    # ── Selectors (series + forecast week + forecast distance) ───────────────
+    sel_col1, sel_col2, sel_col3 = st.columns([1, 2, 2])
     with sel_col1:
         if available_series:
-            # Initialize to first series on first render after a new run
             if st.session_state.get("_series_options") != available_series:
                 st.session_state["_series_options"] = available_series
                 st.session_state["selected_series"] = available_series[0]
@@ -346,22 +346,49 @@ def feature_comparison_page() -> None:
     with sel_col2:
         week_options = ["All weeks"] + forecast_dates
         selected_week_label: str = st.selectbox(
-            "Forecast week", options=week_options, key="selected_week",
+            "Forecast Week", options=week_options, key="selected_week",
+            help="The future date being forecasted",
         )
         selected_week: str | None = (
             None if selected_week_label == "All weeks" else selected_week_label
         )
 
-    # ── LLM analysis (cached per series+week) ────────────────────────────────
+    with sel_col3:
+        distances = get_forecast_distances(planned_preds)
+        if distances:
+            dist_labels = ["All distances"] + [
+                f"{d} week{'s' if d > 1 else ''} ahead" for d in distances
+            ]
+            selected_dist_label: str = st.selectbox(
+                "Forecast Distance", options=dist_labels, key="selected_distance",
+                help="How far in advance the forecast was made",
+            )
+            selected_distance: int | None = (
+                None if selected_dist_label == "All distances"
+                else int(selected_dist_label.split()[0])
+            )
+        else:
+            selected_distance = None
+            st.caption("forecast_step not in data")
+
+    # Apply forecast distance filter before charts (pre-filter to avoid changing all chart APIs)
+    if selected_distance is not None:
+        planned_preds_v = [r for r in planned_preds if int(r.get("forecast_step", -1)) == selected_distance]
+        actual_preds_v  = [r for r in actual_preds  if int(r.get("forecast_step", -1)) == selected_distance]
+    else:
+        planned_preds_v = planned_preds
+        actual_preds_v  = actual_preds
+
+    # ── LLM analysis (cached per series+week+distance) ───────────────────────
     if "comparison_summaries" not in st.session_state:
         st.session_state["comparison_summaries"] = {}
 
-    summary_key = (selected_series, selected_week)
+    summary_key = (selected_series, selected_week, selected_distance)
     if summary_key not in st.session_state["comparison_summaries"]:
         with st.spinner("Generating AI comparison analysis…"):
             try:
                 summary = get_comparison_llm_summary(
-                    planned_preds, actual_preds,
+                    planned_preds_v, actual_preds_v,
                     planned_df_s, actual_df_s,
                     series_id=selected_series,
                     selected_week=selected_week,
@@ -376,7 +403,7 @@ def feature_comparison_page() -> None:
 
     # ── Overlay forecast chart ────────────────────────────────────────────────
     chart_json = build_comparison_chart(
-        planned_preds, actual_preds, planned_df_s,
+        planned_preds_v, actual_preds_v, planned_df_s,
         n_history=int(n_history),
         series_id=selected_series,
         selected_week=selected_week,
@@ -391,25 +418,27 @@ def feature_comparison_page() -> None:
         st.plotly_chart(go.Figure(weather_fig), config=CHART_CONFIG, use_container_width=True)
 
     # ── XEMP feature impact side by side ─────────────────────────────────────
-    xemp_color_map = build_xemp_color_map(planned_preds, actual_preds, series_id=selected_series)
+    xemp_color_map = build_xemp_color_map(planned_preds_v, actual_preds_v, series_id=selected_series)
     xemp_col1, xemp_col2 = st.columns(2)
     with xemp_col1:
         xemp_planned = build_xemp_bar(
-            planned_preds, series_id=selected_series,
+            planned_preds_v, series_id=selected_series,
             selected_week=selected_week, label="Planned",
             color_map=xemp_color_map,
         )
         st.plotly_chart(go.Figure(xemp_planned), config=CHART_CONFIG, use_container_width=True)
     with xemp_col2:
         xemp_actual = build_xemp_bar(
-            actual_preds, series_id=selected_series,
+            actual_preds_v, series_id=selected_series,
             selected_week=selected_week, label="Actual",
             color_map=xemp_color_map,
         )
         st.plotly_chart(go.Figure(xemp_actual), config=CHART_CONFIG, use_container_width=True)
 
     # ── Input feature differences table ──────────────────────────────────────
-    week_label_str = f"  —  Week: {selected_week}" if selected_week else "  —  All weeks"
+    dist_label_str = f", distance {selected_distance}w" if selected_distance else ""
+    week_label_str = (f"  —  Week: {selected_week}{dist_label_str}" if selected_week
+                      else f"  —  All weeks{dist_label_str}")
     with st.expander(f"Input feature differences{week_label_str}"):
         diff_df = build_input_diff_table(
             planned_df_s, actual_df_s,
