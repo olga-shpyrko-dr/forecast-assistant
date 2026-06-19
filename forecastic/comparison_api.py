@@ -563,13 +563,15 @@ def build_xemp_combined(
         p_data = planned_bar_df[planned_bar_df["feature"] == feat]
         a_data = actual_bar_df[actual_bar_df["feature"] == feat]
 
-        common = dict(
-            name=feat, marker_color=color, legendgroup=feat,
-            visible=visibility,
-            hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
-        )
-        fig.add_trace(go.Bar(**common, showlegend=True,  x=p_data["date_id"], y=p_data["strength"]), row=1, col=1)
-        fig.add_trace(go.Bar(**common, showlegend=False, x=a_data["date_id"], y=a_data["strength"]), row=1, col=2)
+        base = dict(name=feat, marker_color=color, legendgroup=feat, visible=visibility)
+        fig.add_trace(go.Bar(**base, showlegend=True,
+            x=p_data["date_id"], y=p_data["strength"],
+            hovertemplate="<b>Planned — %{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
+        ), row=1, col=1)
+        fig.add_trace(go.Bar(**base, showlegend=False,
+            x=a_data["date_id"], y=a_data["strength"],
+            hovertemplate="<b>Actual — %{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
+        ), row=1, col=2)
 
     xaxis_kw = {
         **_AXIS_STYLE,
@@ -594,6 +596,7 @@ def build_xemp_combined(
 
     fig.update_layout(
         **_LAYOUT_BASE,
+        hovermode="closest",  # each bar shows its own tooltip; avoids cross-subplot bleed
         height=500,
         barmode="relative",
         showlegend=True,
