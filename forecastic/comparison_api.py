@@ -337,10 +337,16 @@ def build_comparison_chart(
             line_color="#FFFF54", opacity=0.55,
         )
 
-    # Weather event bands
+    # Weather event bands — only within the forecast window
     if weather_df is not None and not weather_df.empty:
+        forecast_dates = (
+            set(planned_fc["date_id"].astype(str).str[:10])
+            | set(actual_fc["date_id"].astype(str).str[:10])
+        )
         w_agg = _aggregate_weather(weather_df)
         for _, row in w_agg.iterrows():
+            if str(row["week_start"])[:10] not in forecast_dates:
+                continue
             color = _weather_band_color(str(row["adverse_events"]))
             if color:
                 week_dt = pd.Timestamp(row["week_start"])
@@ -550,12 +556,13 @@ def build_weather_panel(
         ),
         xaxis=xaxis_kw,
         yaxis=dict(**_AXIS_STYLE, title_text="Max gust (km/h)"),
-        yaxis2=dict(
+        yaxis2={
             **_AXIS_STYLE,
-            title_text="Avg temp (°C)",
-            overlaying="y", side="right",
-            showgrid=False,
-        ),
+            "title_text": "Avg temp (°C)",
+            "overlaying": "y",
+            "side": "right",
+            "showgrid": False,
+        },
         margin=dict(l=50, r=60, b=80, t=40, pad=4),
     )
     return fig.to_dict()  # type: ignore[no-any-return]
