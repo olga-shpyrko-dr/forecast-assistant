@@ -370,7 +370,7 @@ def feature_comparison_page() -> None:
 
     with sel_col2:
         selected_weeks: list[str] = st.multiselect(
-            "Forecast Week", options=forecast_dates, key="selected_week",
+            "Forecast Week (for analysis of drivers)", options=forecast_dates, key="selected_week",
             placeholder="All weeks",
             help="Filter to specific forecast target dates (leave empty = show all)",
         )
