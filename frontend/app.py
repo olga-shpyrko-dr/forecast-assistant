@@ -202,18 +202,16 @@ def fpa() -> None:
             st.write(st.session_state["forecast_interpretation"])
 
 
-def _main() -> None:
-    hide_streamlit_style = """
-    <style>
-    # MainMenu {visibility: hidden;}
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
-    </style>
-    """
-    st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+st.markdown(
+    "<style>#MainMenu{visibility:hidden;}header{visibility:hidden;}"
+    "footer{visibility:hidden;}</style>",
+    unsafe_allow_html=True,
+)
 
-    fpa()
-
-
-if __name__ == "__main__":
-    _main()
+pg = st.navigation(
+    [
+        st.Page(fpa, title="Forecast Assistant - Main", default=True),
+        st.Page("pages/2_Analysis_of_Drivers.py", title="Analysis of Drivers"),
+    ]
+)
+pg.run()
