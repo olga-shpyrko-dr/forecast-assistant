@@ -60,7 +60,7 @@ FDW_START_WKS    = -6    # feature derivation window start (weeks)
 FDW_END_WKS      = 0     # feature derivation window end
 FW_START_WKS     = 1     # forecast window start
 FW_END_WKS       = 13    # forecast window end
-MAX_EXPLANATIONS = 3
+MAX_EXPLANATIONS = 10
 
 # ── Default horizon: 4 weeks of April 2026 ────────────────────────────────────
 DEFAULT_START = "2026-04-06"
