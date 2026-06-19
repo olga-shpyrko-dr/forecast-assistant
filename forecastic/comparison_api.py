@@ -94,12 +94,32 @@ def _filter_df(df: pd.DataFrame, series_id: Optional[str]) -> pd.DataFrame:
     return df[df[ms_col] == series_id]
 
 
+def _find_prediction_col(preds_df: pd.DataFrame) -> str:
+    """Return the prediction value column, trying several naming conventions."""
+    target = app_settings.target
+    candidates = [
+        f"{target}_PREDICTION",
+        "PREDICTION",
+        "prediction",
+    ]
+    for c in candidates:
+        if c in preds_df.columns:
+            return c
+    # Last resort: first column whose name ends with _PREDICTION
+    for c in preds_df.columns:
+        if c.upper().endswith("_PREDICTION"):
+            return c
+    raise KeyError(
+        f"Could not find a prediction column in {list(preds_df.columns)}. "
+        f"Expected '{target}_PREDICTION' or similar."
+    )
+
+
 def _preds_to_fc_df(preds: list[dict]) -> pd.DataFrame:
     """Convert raw DR prediction dicts to date_id / prediction / low / high DataFrame."""
     preds_df = pd.DataFrame(preds)
     date_col = app_settings.datetime_partition_column
-    target = app_settings.target
-    target_pred_col = f"{target}_PREDICTION"
+    target_pred_col = _find_prediction_col(preds_df)
 
     result = (
         preds_df[[date_col, target_pred_col]]
