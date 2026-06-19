@@ -957,19 +957,30 @@ def get_comparison_llm_summary(
     )
     headline = _get_completion(headline_prompt, system_prompt=system_prompt, temperature=0.2)
 
-    # Weather connection (Stage 3)
+    # Weather connection (Stage 3) — filter to selected weeks only to avoid hallucination
     weather_connection: Optional[str] = None
     if weather_df is not None and not weather_df.empty:
-        w_summary = weather_df.head(13).to_string(index=False)
-        weather_conn_prompt = (
-            f"Given the weather data for the Netherlands{scope_label} and a forecast gap of {gap:+.0f} calls "
-            f"(planned {p_avg:.0f} → actual {a_avg:.0f}), "
-            "in 2 sentences explain how weather events may have contributed to the TECH workload spike."
-            f"\n\nWeather:\n{w_summary}"
-        )
-        weather_connection = _get_completion(
-            weather_conn_prompt, system_prompt=system_prompt, temperature=0
-        )
+        w_scoped = weather_df.copy()
+        if selected_week:
+            date_col_w = next((c for c in w_scoped.columns if "date" in c.lower()), None)
+            if date_col_w:
+                w_scoped = w_scoped[w_scoped[date_col_w].isin(selected_week)]
+        if not w_scoped.empty:
+            w_summary = w_scoped.to_string(index=False)
+            weather_conn_prompt = (
+                f"Below is the EXACT weather data available for the Netherlands{scope_label}. "
+                "Use ONLY the numbers in this table — do not add external knowledge, estimates, "
+                "or ranges not present in the data. "
+                f"The forecast gap is {gap:+.0f} calls (planned {p_avg:.0f} → actual {a_avg:.0f}). "
+                "In 2 sentences, describe what the data shows about weather conditions and how "
+                "those specific conditions may have contributed to TECH workload. "
+                "If the data shows no severe weather (max gust below 70 km/h and low precipitation), "
+                "say so — do not invent a weather explanation.\n\n"
+                f"Weather data:\n{w_summary}"
+            )
+            weather_connection = _get_completion(
+                weather_conn_prompt, system_prompt=system_prompt, temperature=0
+            )
 
     return ComparisonSummary(
         headline=headline,
