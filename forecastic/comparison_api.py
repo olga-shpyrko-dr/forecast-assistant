@@ -357,10 +357,8 @@ def build_comparison_chart(
         obs = actuals_df.copy()
         if ms_col_a and ms_col_a in obs.columns and series_id:
             obs = obs[obs[ms_col_a] == series_id]
-        # Always scope to the forecast window to avoid x-axis distortion
+        # Scope to the full forecast window — selected_week controls XEMP, not actuals
         fc_dates = set(planned_fc["date_id"].astype(str).str[:10]) | set(actual_fc["date_id"].astype(str).str[:10])
-        if selected_week:
-            fc_dates &= {str(w)[:10] for w in selected_week}
         obs = obs[obs[date_col_a].astype(str).str[:10].isin(fc_dates)]
         obs = obs[[date_col_a, app_settings.target]].dropna().sort_values(date_col_a)
         if not obs.empty:
