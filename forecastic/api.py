@@ -17,6 +17,7 @@ import datetime as dt
 import functools
 import io
 import json
+import os
 import sys
 from importlib import resources
 from typing import Any, List, Optional, Tuple
@@ -28,7 +29,7 @@ import plotly.graph_objects as go
 import yaml
 from datarobot.errors import ClientError
 from datarobot_predict.deployment import predict
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 from plotly.subplots import make_subplots
 from pydantic import ValidationError
 
@@ -80,29 +81,62 @@ class LLMNotAvailableException(Exception):
     """Exception raised when the LLM is unavailable."""
 
 
+def _get_env(name: str) -> str:
+    """Read a runtime parameter by name, checking the MLOPS_RUNTIME_PARAM_ prefix first."""
+    return os.environ.get(f"MLOPS_RUNTIME_PARAM_{name}") or os.environ.get(name, "")
+
+
 def _get_completion(
     prompt: str,
     temperature: float = 0,
     system_prompt: Optional[str] = None,
     llm_model_name: Optional[str] = None,
 ) -> str:
-    """Generate LLM completion."""
+    """Generate LLM completion.
+
+    Priority:
+    1. Azure OpenAI directly — when AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY and
+       AZURE_OPENAI_DEPLOYMENT_NAME runtime parameters are all set.
+    2. DR-routed LLM — when GENERATIVE_DEPLOYMENT_ID is set (original path).
+    """
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    azure_endpoint = _get_env("AZURE_OPENAI_ENDPOINT")
+    azure_api_key = _get_env("AZURE_OPENAI_API_KEY")
+    azure_deployment = _get_env("AZURE_OPENAI_DEPLOYMENT_NAME")
+
+    if azure_endpoint and azure_api_key and azure_deployment:
+        try:
+            api_version = _get_env("AZURE_OPENAI_API_VERSION") or "2024-02-01"
+            client = AzureOpenAI(
+                azure_endpoint=azure_endpoint,
+                api_key=azure_api_key,
+                api_version=api_version,
+            )
+            resp = client.chat.completions.create(
+                model=azure_deployment,
+                messages=messages,  # type: ignore[arg-type]
+                temperature=temperature,
+            )
+            return str(resp.choices[0].message.content)
+        except Exception as e:
+            raise LLMNotAvailableException("Azure OpenAI unavailable.") from e
+
+    # Fall back to DR-routed LLM
     generative_deployment_id = GenerativeDeployment().id
+    if not generative_deployment_id:
+        raise LLMNotAvailableException("No LLM configured.")
     try:
         dr_client = dr.client.get_client()
-        azure_client = OpenAI(
+        openai_client = OpenAI(
             base_url=dr_client.endpoint.rstrip("/")
             + f"/deployments/{generative_deployment_id}",
             api_key=dr_client.token,
         )
-        if system_prompt:
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ]
-        else:
-            messages = [{"role": "user", "content": prompt}]
-        resp = azure_client.chat.completions.create(
+        resp = openai_client.chat.completions.create(
             messages=messages,  # type: ignore[arg-type]
             model="datarobot-deployed-llm",
             temperature=temperature,
