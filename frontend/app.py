@@ -195,8 +195,8 @@ def fpa() -> None:
                     st.session_state["forecast_interpretation"] = (
                         forecast_summary.summary_body
                     )
-                except LLMNotAvailableException:
-                    pass
+                except LLMNotAvailableException as e:
+                    st.warning(f"AI commentary unavailable: {e}")
         st.session_state["explanations_df"] = clean_column_headers(
             get_explain_df(forecast_raw)
         )

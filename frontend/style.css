@@ -79,20 +79,21 @@ button[data-testid="baseButton-secondaryFormSubmit"]:hover {
 }
 
 button[data-testid="baseButton-primary"],
+button[data-testid="baseButton-primaryFormSubmit"],
 section[data-testid="stSidebar"] button[data-testid="baseButton-primary"],
-.stButton > button[data-testid="baseButton-primary"],
+section[data-testid="stSidebar"] button[data-testid="baseButton-primaryFormSubmit"],
 button[data-testid="baseButton-primary"]:hover,
-section[data-testid="stSidebar"] button[data-testid="baseButton-primary"]:hover,
-.stButton > button[data-testid="baseButton-primary"]:hover {
+button[data-testid="baseButton-primaryFormSubmit"]:hover {
     background: #81FBA5 !important;
     background-color: #81FBA5 !important;
     color: #0B0B0B !important;
     border: none !important;
     border-radius: 4px !important;
 }
-button[data-testid="baseButton-primary"] p,
-button[data-testid="baseButton-primary"]:hover p,
-section[data-testid="stSidebar"] button[data-testid="baseButton-primary"] p {
+button[data-testid="baseButton-primary"] *,
+button[data-testid="baseButton-primaryFormSubmit"] *,
+button[data-testid="baseButton-primary"]:hover *,
+button[data-testid="baseButton-primaryFormSubmit"]:hover * {
     color: #0B0B0B !important;
     font-family: 'DM Sans', sans-serif !important;
     font-weight: 700 !important;

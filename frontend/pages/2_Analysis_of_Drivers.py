@@ -422,7 +422,8 @@ def feature_comparison_page() -> None:
                         whatif_preds=whatif_preds,
                     )
                     st.session_state["comparison_summaries"][summary_key] = summary
-                except LLMNotAvailableException:
+                except LLMNotAvailableException as e:
+                    st.warning(f"AI commentary unavailable: {e}")
                     st.session_state["comparison_summaries"][summary_key] = None
         summary = st.session_state["comparison_summaries"].get(summary_key)
 
@@ -534,8 +535,8 @@ def feature_comparison_page() -> None:
                 unsafe_allow_html=True,
             )
             st.write(summary.weather_connection)
-    elif summary is None and "comparison_summaries" in st.session_state:
-        st.caption("AI analysis unavailable — LLM deployment not configured.")
+    elif show_llm and summary is None and "comparison_summaries" in st.session_state:
+        st.caption("AI analysis unavailable — check the warning above for details.")
 
 
 # ── Diff table HTML renderer ──────────────────────────────────────────────────
