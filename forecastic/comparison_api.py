@@ -227,19 +227,28 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[list[str]] = None) -
     rows = []
     for i in range(1, 11):
         feat_col = f"EXPLANATION_{i}_FEATURE_NAME"
-        str_col = f"EXPLANATION_{i}_STRENGTH"
+        str_col  = f"EXPLANATION_{i}_STRENGTH"
+        val_col  = f"EXPLANATION_{i}_ACTUAL_VALUE"
         if feat_col not in preds_df.columns:
             continue
-        tmp = preds_df[[date_col, feat_col, str_col]].rename(
-            columns={date_col: "date_id", feat_col: "feature", str_col: "strength"}
-        )
+        cols = [date_col, feat_col, str_col]
+        rename = {date_col: "date_id", feat_col: "feature", str_col: "strength"}
+        if val_col in preds_df.columns:
+            cols.append(val_col)
+            rename[val_col] = "actual_value"
+        tmp = preds_df[cols].rename(columns=rename)
+        if "actual_value" not in tmp.columns:
+            tmp["actual_value"] = float("nan")
         rows.append(tmp)
     if not rows:
-        return pd.DataFrame(columns=["date_id", "feature", "strength"])
+        return pd.DataFrame(columns=["date_id", "feature", "strength", "actual_value"])
     combined = pd.concat(rows, ignore_index=True)
     combined["feature"] = combined["feature"].str.replace(r"\s*\(actual\)\s*$", "", regex=True).str.strip()
     combined = combined[~combined["feature"].apply(_is_immutable)]
-    result = combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
+    result = combined.groupby(["date_id", "feature"], as_index=False).agg(
+        strength=("strength", "sum"),
+        actual_value=("actual_value", "mean"),
+    )
     # Trim ISO timestamps to YYYY-MM-DD for readable axis labels
     result["date_id"] = result["date_id"].astype(str).str[:10]
     if selected_week:
@@ -587,11 +596,23 @@ def build_xemp_combined(
         base = dict(name=feat, marker_color=color, legendgroup=feat, visible=visibility)
         fig.add_trace(go.Bar(**base, showlegend=True,
             x=p_data["date_id"], y=p_data["strength"],
-            hovertemplate="<b>Planned — %{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
+            customdata=p_data["actual_value"].values,
+            hovertemplate=(
+                "<b>Planned — %{x}</b><br>"
+                "%{fullData.name}: %{y:,.1f}<br>"
+                "Value: %{customdata:,.2f}"
+                "<extra></extra>"
+            ),
         ), row=1, col=1)
         fig.add_trace(go.Bar(**base, showlegend=False,
             x=a_data["date_id"], y=a_data["strength"],
-            hovertemplate="<b>Actual — %{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
+            customdata=a_data["actual_value"].values,
+            hovertemplate=(
+                "<b>Actual — %{x}</b><br>"
+                "%{fullData.name}: %{y:,.1f}<br>"
+                "Value: %{customdata:,.2f}"
+                "<extra></extra>"
+            ),
         ), row=1, col=2)
 
     xaxis_kw = {
