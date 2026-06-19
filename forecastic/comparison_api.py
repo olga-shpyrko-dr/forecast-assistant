@@ -308,11 +308,29 @@ def build_comparison_chart(
     return fig.to_dict()  # type: ignore[no-any-return]
 
 
+def build_xemp_color_map(
+    planned_preds: list[dict],
+    actual_preds: list[dict],
+    series_id: Optional[str] = None,
+) -> dict[str, str]:
+    """Build a stable feature→color mapping from the union of both prediction sets."""
+    planned_df = _xemp_bar_df(_filter_preds(planned_preds, series_id))
+    actual_df = _xemp_bar_df(_filter_preds(actual_preds, series_id))
+    all_features: list[str] = []
+    seen: set[str] = set()
+    for feat in list(planned_df["feature"].unique()) + list(actual_df["feature"].unique()):
+        if feat not in seen:
+            all_features.append(feat)
+            seen.add(feat)
+    return {feat: BAR_COLORS[i % len(BAR_COLORS)] for i, feat in enumerate(all_features)}
+
+
 def build_xemp_bar(
     preds: list[dict],
     series_id: Optional[str] = None,
     selected_week: Optional[str] = None,
     label: str = "",
+    color_map: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
     """Single XEMP stacked bar chart for one prediction set."""
     bar_df = _xemp_bar_df(_filter_preds(preds, series_id), selected_week)
@@ -324,11 +342,12 @@ def build_xemp_bar(
 
     for i, feat in enumerate(bar_df["feature"].unique()):
         feat_data = bar_df[bar_df["feature"] == feat]
+        color = color_map.get(feat, BAR_COLORS[i % len(BAR_COLORS)]) if color_map else BAR_COLORS[i % len(BAR_COLORS)]
         fig.add_trace(go.Bar(
             x=feat_data["date_id"],
             y=feat_data["strength"],
             name=feat,
-            marker_color=BAR_COLORS[i % len(BAR_COLORS)],
+            marker_color=color,
             hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
         ))
 

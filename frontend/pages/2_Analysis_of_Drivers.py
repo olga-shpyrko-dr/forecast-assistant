@@ -25,6 +25,7 @@ from forecastic.comparison_api import (
     build_comparison_chart,
     build_input_diff_table,
     build_xemp_bar,
+    build_xemp_color_map,
     get_available_series,
     get_comparison_llm_summary,
     get_forecast_dates,
@@ -265,17 +266,20 @@ def feature_comparison_page() -> None:
     st.plotly_chart(go.Figure(chart_json), config=CHART_CONFIG, use_container_width=True)
 
     # ── XEMP feature impact side by side ─────────────────────────────────────
+    xemp_color_map = build_xemp_color_map(planned_preds, actual_preds, series_id=selected_series)
     xemp_col1, xemp_col2 = st.columns(2)
     with xemp_col1:
         xemp_planned = build_xemp_bar(
             planned_preds, series_id=selected_series,
             selected_week=selected_week, label="Planned",
+            color_map=xemp_color_map,
         )
         st.plotly_chart(go.Figure(xemp_planned), config=CHART_CONFIG, use_container_width=True)
     with xemp_col2:
         xemp_actual = build_xemp_bar(
             actual_preds, series_id=selected_series,
             selected_week=selected_week, label="Actual",
+            color_map=xemp_color_map,
         )
         st.plotly_chart(go.Figure(xemp_actual), config=CHART_CONFIG, use_container_width=True)
 
