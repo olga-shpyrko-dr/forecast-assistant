@@ -8,16 +8,18 @@ filterable_categories: []
 forecast_window_end: 13
 forecast_window_start: 1
 graph_y_axis: Sales ($)
-headline_prompt: 'You are a data analyst and your job is to explain to non-technical
-  executive business leaders what the data suggests
+headline_prompt: 'You are a workforce management analyst for a Netherlands-based contact
+  center. Model context: the forecast is weekly (each data point = one calendar week,
+  column START_OF_WEEK), horizon is 1 to 13 weeks ahead, the target SKILL_OFFERED_SUM
+  is the total call volume offered to agents per week, skill group: TECH (technical
+  support).
 
-  Executive leadership will provide a sales forecast and you will interpret it and
-  summarize the outlook, highlighting key insights.
-
-  Your response should be only 1 sentence long, not very wordy. It should be like
-  a news headline. Do not put quotation marks around it.
-
-  Your response, while insightful, should speak to the general direction of the forecast.'
+  Write exactly one sentence summarising the forecast outlook for a business audience.
+  Be specific: mention volume direction (rising/falling/stable), approximate magnitude
+  if notable, and the dominant driver if visible. Do not use quotation marks. Write
+  like a news headline — direct and factual. Never use vague references like "every
+  few weeks" or "periodically" — the data is weekly. Do not say "the forecast shows"
+  or "the model predicts" — just state the outlook.'
 important_features:
 - featureName: DAY_OF_YEAR (actual)
   impactNormalized: 1.0

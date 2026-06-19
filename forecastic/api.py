@@ -909,26 +909,42 @@ def _summarize_dataframe(prompt_dataframe: pd.DataFrame, ex_target: bool) -> str
     Get the LLM sub-summary for the forecast.
     """
     target = app_settings.target
+    fdw = abs(app_settings.feature_derivation_window_start)
+    _system_prompt = (
+        f"You are a workforce management analyst for a Netherlands-based contact center.\n"
+        f"Model context:\n"
+        f"- Target: {target} — total call volume offered to agents per week\n"
+        f"- Time granularity: weekly (each row = one calendar week, "
+        f"column: {app_settings.datetime_partition_column})\n"
+        f"- Forecast horizon: "
+        f"{app_settings.forecast_window_start}–{app_settings.forecast_window_end} weeks ahead\n"
+        f"- Feature derivation window: last {fdw} weeks of history used to create lag features\n"
+        f"- Skill group in this deployment: TECH (technical support)\n"
+        "Be concise and use plain language suitable for a business audience. "
+        "Never use vague time references like 'periodically' or 'every few weeks' — "
+        "the data is weekly."
+    )
     if ex_target:
         prompt = gettext(
-            "The following are the most important exogenous features "
-            + "in the forecasting model's predictions of `{target}`. "
-            + "Provide a 3-4 sentence summary of the exogenous "
-            + "driver(s) for the forecast, explain any potential "
-            + "intuitive, qualitative interpretation(s) "
-            + "or explanation(s)."
+            "The following are the most important exogenous (non-historical) features "
+            + "driving the weekly call volume forecast for `{target}` at this contact center. "
+            + "These include operational events (e.g. TECH SWAP, MIGRATION, CHURN, NEW CUSTOMER, ADDON, MSTB) "
+            + "and calendar markers (Dutch public holidays, school seasons). "
+            + "Provide a 3–4 sentence plain-language summary: which external drivers are most influential "
+            + "this forecast period, and what each likely means for incoming call volume."
         ).format(target=target)
         explain_df = prompt_dataframe[
             ~prompt_dataframe["feature"].str.startswith(target + " (")
         ].copy()
     else:
         prompt = gettext(
-            "The following are the most important features in the "
-            + "forecasting model's predictions. Provide a 3-4 sentence "
-            + "summary of the key cyclical and/or trend drivers for the "
-            + "forecast, explain any potential intuitive,qualitative "
-            + "interpretations or explanations."
-        )
+            "The following are the most important lagged and trend features "
+            + "driving the weekly call volume forecast for `{target}` at this contact center. "
+            + "These are derived from the historical SKILL_OFFERED_SUM series "
+            + "(lags, rolling means, velocity, acceleration). "
+            + "Provide a 3–4 sentence summary of the momentum and trend patterns visible in these features, "
+            + "and what the recent trajectory suggests about near-term demand."
+        ).format(target=target)
         explain_df = prompt_dataframe[
             prompt_dataframe["feature"].str.startswith(target + " (")
         ].copy()
@@ -936,7 +952,7 @@ def _summarize_dataframe(prompt_dataframe: pd.DataFrame, ex_target: bool) -> str
         explain_df,
         prompt,
     )
-    prompt_completion = _get_completion(prompt_string, temperature=0)
+    prompt_completion = _get_completion(prompt_string, system_prompt=_system_prompt, temperature=0)
     return prompt_completion
 
 

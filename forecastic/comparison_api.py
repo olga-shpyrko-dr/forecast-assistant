@@ -876,9 +876,24 @@ def get_comparison_llm_summary(
     series_label = f" (series: {series_id})" if series_id else ""
 
     system_prompt = (
-        "You are a workforce analytics expert for a Netherlands-based contact center. "
-        "You analyse weekly call volume forecasts for TECH and ADMIN skill groups. "
-        "Adverse weather events (storms, high precipitation) are known to spike TECH workload. "
+        "You are a workforce management analyst for a Netherlands-based contact center.\n\n"
+        "Context:\n"
+        "- Skill group in this deployment: TECH (technical support).\n"
+        "- SKILL_OFFERED_SUM is the weekly call volume offered to agents — the target being forecast.\n"
+        "- The forecast is weekly (each data point = one calendar week), horizon 1–13 weeks ahead.\n"
+        "- Feature importance (XEMP) values show each input's contribution to the prediction: "
+        "a positive strength means the feature pushed the forecast up relative to baseline; "
+        "negative means it pushed it down. Larger absolute values = stronger influence.\n"
+        "- Key operational features: TECH SWAP (hardware migration campaigns), "
+        "MIGRATION WITH CPE / WITHOUT CPE (broadband network migrations), "
+        "NEW CUSTOMER (new activations), CHURN (cancellations), "
+        "ASA (average speed of answer — a service-level proxy), "
+        "ADDON (add-on service activations), MSTB (modem self-install troubleshooting).\n"
+        "- Calendar features: Dutch public holidays (Kerst = Christmas, Mei = May holiday) "
+        "and school seasons (Voorjaar = spring break, Zomer = summer holiday).\n"
+        "- Weather: Dutch storms (wind gusts >70 km/h) and high precipitation "
+        "consistently correlate with elevated TECH call volume, likely due to "
+        "service outages and connection issues caused by weather damage.\n\n"
         "Be concise, specific, and use plain language suitable for a business audience."
     )
 
