@@ -22,17 +22,26 @@ import streamlit as st
 
 sys.path.append("..")
 
-# ── Cache file path ───────────────────────────────────────────────────────────
+# ── Data file path resolution ─────────────────────────────────────────────────
 _HERE = Path(__file__).parent
-_CACHE_FILE = _HERE.parent.parent / "data" / "forecast_cache.csv"
-if not _CACHE_FILE.exists():
-    _CACHE_FILE = Path(os.getcwd()) / "data" / "forecast_cache.csv"
+
+def _find_data_file(filename: str) -> Path:
+    """Search several candidate directories for a data file."""
+    candidates = [
+        _HERE.parent.parent / "data" / filename,           # repo root/data/ (local dev)
+        Path("/home/notebooks/storage/forecast-assistant/data") / filename,  # DR codespace storage
+        Path(os.getcwd()) / "data" / filename,             # cwd/data/
+        Path("/opt/code/data") / filename,                 # deployed app container
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[0]  # return first path even if missing (triggers "not found" message)
+
+_CACHE_FILE   = _find_data_file("forecast_cache.csv")
+_WEATHER_FILE = _find_data_file("nl_weekly_weather_2026.csv")
 
 DEFAULT_PREDICTION_WEEKS = ["2026-04-06", "2026-04-13", "2026-04-20", "2026-04-27"]
-
-_WEATHER_FILE = _HERE.parent.parent / "data" / "nl_weekly_weather_2026.csv"
-if not _WEATHER_FILE.exists():
-    _WEATHER_FILE = Path(os.getcwd()) / "data" / "nl_weekly_weather_2026.csv"
 
 from forecastic.api import LLMNotAvailableException, get_app_settings
 from forecastic.comparison_api import (

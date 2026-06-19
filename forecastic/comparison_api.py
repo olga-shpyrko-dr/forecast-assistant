@@ -425,11 +425,6 @@ def build_xemp_bar(
             bgcolor="rgba(0,0,0,0)",
             tracegroupgap=4,
         ),
-        hoverlabel=dict(
-            bgcolor="#1a1a1a",
-            font=dict(family="DM Sans", size=13, color="#FFFFFF"),
-            namelength=-1,
-        ),
         margin=dict(l=50, r=20, b=180, t=50, pad=4),
         xaxis=xaxis_kw,
         yaxis=dict(**_AXIS_STYLE, title_text="XEMP Strength"),
@@ -539,10 +534,6 @@ def build_weather_panel(
             showgrid=False,
         ),
         margin=dict(l=50, r=60, b=80, t=40, pad=4),
-        hoverlabel=dict(
-            bgcolor="#1a1a1a",
-            font=dict(family="DM Sans", size=13, color="#FFFFFF"),
-        ),
     )
     return fig.to_dict()  # type: ignore[no-any-return]
 
