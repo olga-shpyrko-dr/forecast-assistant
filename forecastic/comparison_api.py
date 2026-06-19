@@ -183,8 +183,11 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[str] = None) -> pd.D
         return pd.DataFrame(columns=["date_id", "feature", "strength"])
     combined = pd.concat(rows, ignore_index=True)
     result = combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
+    # Trim ISO timestamps to YYYY-MM-DD for readable axis labels
+    result["date_id"] = pd.to_datetime(result["date_id"], utc=True, errors="coerce").dt.strftime("%Y-%m-%d").fillna(result["date_id"])
     if selected_week:
-        result = result[result["date_id"] == selected_week]
+        week_short = str(selected_week)[:10]
+        result = result[result["date_id"].str[:10] == week_short]
     return result
 
 
@@ -322,8 +325,11 @@ def build_xemp_bar(
     for i, feat in enumerate(bar_df["feature"].unique()):
         feat_data = bar_df[bar_df["feature"] == feat]
         fig.add_trace(go.Bar(
-            x=feat_data["date_id"], y=feat_data["strength"],
-            name=feat, marker_color=BAR_COLORS[i % len(BAR_COLORS)],
+            x=feat_data["date_id"],
+            y=feat_data["strength"],
+            name=feat,
+            marker_color=BAR_COLORS[i % len(BAR_COLORS)],
+            hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
         ))
 
     eyebrow = label.upper() if label else "XEMP FEATURE IMPACT"
@@ -333,19 +339,32 @@ def build_xemp_bar(
         font=dict(family="Fragment Mono, monospace", size=9, color="#81FBA5"),
     )
 
-    axis_kw = dict(**_AXIS_STYLE, type="category")
+    xaxis_kw = dict(
+        **_AXIS_STYLE,
+        type="category",
+        tickangle=-40,
+        tickfont=dict(size=10),
+    )
     fig.update_layout(
         **_LAYOUT_BASE,
-        height=320,
+        height=480,
         barmode="relative",
         showlegend=True,
         legend=dict(
-            orientation="h", yanchor="top", y=-0.22,
-            font=dict(family="DM Sans", size=10, color="#A2A2A2"),
+            orientation="h",
+            yanchor="top", y=-0.35,
+            xanchor="left", x=0,
+            font=dict(family="DM Sans", size=11, color="#A2A2A2"),
             bgcolor="rgba(0,0,0,0)",
+            tracegroupgap=4,
         ),
-        margin=dict(l=40, r=20, b=80, t=45, pad=4),
-        xaxis=axis_kw,
+        hoverlabel=dict(
+            bgcolor="#1a1a1a",
+            font=dict(family="DM Sans", size=13, color="#FFFFFF"),
+            namelength=-1,
+        ),
+        margin=dict(l=50, r=20, b=180, t=50, pad=4),
+        xaxis=xaxis_kw,
         yaxis=dict(**_AXIS_STYLE, title_text="XEMP Strength"),
     )
     return fig.to_dict()  # type: ignore[no-any-return]
