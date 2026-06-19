@@ -509,20 +509,12 @@ def feature_comparison_page() -> None:
             unsafe_allow_html=True,
         )
 
-        why_col, insights_col = st.columns(2)
-        with why_col:
+        st.write(summary.why_forecasts_differ)
+        if summary.insights_to_explore:
             st.markdown(
                 "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
                 "text-transform:uppercase;letter-spacing:0.08em;"
-                "color:#909BF5;margin-bottom:4px;'>Why Forecasts Differ</p>",
-                unsafe_allow_html=True,
-            )
-            st.write(summary.why_forecasts_differ)
-        with insights_col:
-            st.markdown(
-                "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
-                "text-transform:uppercase;letter-spacing:0.08em;"
-                "color:#44BFFC;margin-bottom:4px;'>Insights to Explore</p>",
+                "color:#44BFFC;margin-top:12px;margin-bottom:4px;'>Insights to Explore</p>",
                 unsafe_allow_html=True,
             )
             st.write(summary.insights_to_explore)

@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import os
-import re
 from typing import Any, List, Optional
 
 import datarobot as dr
@@ -925,23 +924,27 @@ def get_comparison_llm_summary(
             f"{wi_fc[['date_id', 'prediction']].to_string(index=False)}"
         )
 
-    prompt = (
+    why_prompt = (
         f"Forecast A — planned inputs{scope_label}{series_label}:\n{planned_str}\n\n"
         f"Forecast B — actual inputs{scope_label}{series_label}:\n{actual_str}\n\n"
         f"Top input feature differences (planned → actual){scope_label}:\n{diff_str}"
         f"{weather_block}{whatif_block}\n\n"
-        "1. In 3–4 sentences, explain why Forecast B differs from Forecast A. "
-        "Focus on which features changed and how they affected the prediction.\n\n"
-        "2. Suggest 2–3 hypotheses about workforce demand drivers worth investigating, "
-        "grounded in the feature differences and any weather context above."
+        "In 3–4 sentences, explain why Forecast B differs from Forecast A. "
+        "Focus on which features changed and how they affected the prediction. "
+        "Do not use numbered sections or headers — write as plain prose."
     )
+    why_body = _get_completion(why_prompt, system_prompt=system_prompt, temperature=0)
 
-    full_response = _get_completion(prompt, system_prompt=system_prompt, temperature=0)
-
-    # Split on the numbered boundary if the model respected it; else use the whole response as "why"
-    parts = re.split(r'\s*\n\s*2\.', full_response, maxsplit=1)
-    why_body = re.sub(r'^\s*1\.', '', parts[0]).strip()
-    insights_body = parts[1].strip() if len(parts) > 1 else ""
+    insights_prompt = (
+        f"Forecast A — planned inputs{scope_label}{series_label}:\n{planned_str}\n\n"
+        f"Forecast B — actual inputs{scope_label}{series_label}:\n{actual_str}\n\n"
+        f"Top input feature differences (planned → actual){scope_label}:\n{diff_str}"
+        f"{weather_block}{whatif_block}\n\n"
+        "Suggest 2–3 hypotheses about workforce demand drivers worth investigating, "
+        "grounded in the feature differences and any weather context above. "
+        "Write as a short bullet list. No intro sentence, no headers."
+    )
+    insights_body = _get_completion(insights_prompt, system_prompt=system_prompt, temperature=0)
 
     # Headline
     p_avg = p_fc["prediction"].mean() if len(p_fc) else 0.0
