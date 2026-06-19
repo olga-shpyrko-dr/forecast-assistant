@@ -276,8 +276,10 @@ def build_comparison_chart(
     selected_week: Optional[list[str]] = None,
     whatif_preds: Optional[list[dict]] = None,
     weather_df: Optional[pd.DataFrame] = None,
+    actuals_df: Optional[pd.DataFrame] = None,
 ) -> dict[str, Any]:
-    """Overlay chart: history baseline + planned forecast (blue dashed) + actual forecast (purple)."""
+    """Overlay chart: history baseline + planned forecast (blue dashed) + actual forecast (purple)
+    + observed actuals for the forecast window (green dotted) when available."""
     target = app_settings.target
     datetime_col = app_settings.datetime_partition_column
 
@@ -344,6 +346,24 @@ def build_comparison_chart(
             line=dict(color="#FFFF54", width=1.5, dash="dot"),
             marker=dict(color="#FFFF54", size=5),
         ))
+
+    # Observed actuals overlay (green dotted) — forecast window ground truth
+    if actuals_df is not None and not actuals_df.empty:
+        date_col_a = app_settings.datetime_partition_column
+        ms_col_a = app_settings.multiseries_id_column
+        obs = actuals_df.copy()
+        if ms_col_a and ms_col_a in obs.columns and series_id:
+            obs = obs[obs[ms_col_a] == series_id]
+        if selected_week:
+            obs = obs[obs[date_col_a].astype(str).str[:10].isin(selected_week)]
+        obs = obs[[date_col_a, app_settings.target]].dropna().sort_values(date_col_a)
+        if not obs.empty:
+            fig.add_trace(go.Scatter(
+                x=obs[date_col_a], y=obs[app_settings.target],
+                mode="lines+markers", name="Observed Actuals",
+                line=dict(color="#81FBA5", width=2, dash="dot"),
+                marker=dict(color="#81FBA5", size=6, symbol="diamond"),
+            ))
 
     # Forecast-start vertical divider
     if len(history_actual):

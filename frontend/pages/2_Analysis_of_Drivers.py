@@ -40,6 +40,7 @@ def _find_data_file(filename: str) -> Path:
 
 _CACHE_FILE   = _find_data_file("forecast_cache.csv")
 _WEATHER_FILE = _find_data_file("nl_weekly_weather_2026.csv")
+_ACTUALS_FILE = _find_data_file("actuals_lookup.csv")
 
 from forecastic.api import LLMNotAvailableException, get_app_settings
 from forecastic.comparison_api import (
@@ -138,6 +139,13 @@ def _read_weather() -> pd.DataFrame | None:
     if not _WEATHER_FILE.exists():
         return None
     return pd.read_csv(_WEATHER_FILE)
+
+
+@st.cache_data(show_spinner=False)
+def _read_actuals() -> pd.DataFrame | None:
+    if not _ACTUALS_FILE.exists():
+        return None
+    return pd.read_csv(_ACTUALS_FILE)
 
 
 def _load_from_cache(
@@ -334,6 +342,7 @@ def feature_comparison_page() -> None:
     weather_df_s: pd.DataFrame | None = _read_weather()
     if weather_df_s is None:
         weather_df_s = st.session_state.get("weather_df")
+    actuals_df_s: pd.DataFrame | None = _read_actuals()
     available_series: list[str] = st.session_state.get("available_series", [])
     forecast_dates: list[str] = st.session_state.get("forecast_dates", [])
 
@@ -415,6 +424,7 @@ def feature_comparison_page() -> None:
         selected_week=selected_week,
         whatif_preds=whatif_preds,
         weather_df=weather_df_s,
+        actuals_df=actuals_df_s,
     )
     st.plotly_chart(go.Figure(chart_json), config=CHART_CONFIG, use_container_width=True)
 
