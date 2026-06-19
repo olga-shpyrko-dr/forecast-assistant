@@ -33,6 +33,27 @@ from forecastic.resources import TimeSeriesDeployment
 from forecastic.schema import ComparisonSummary
 
 
+# Features that are fixed by the calendar and cannot differ between planned/actual scenarios.
+# Vacations is intentionally excluded from this set — vacation periods can shift.
+_IMMUTABLE_FEATURES: frozenset[str] = frozenset({
+    # Dutch public holidays
+    "1e Kerstdag", "2e Kerstdag",
+    "1e Paasdag",  "2e Paasdag",
+    "1e Pinksterdag", "2e Pinksterdag",
+    "Bevrijdingsdag", "Hemelvaartsdag", "Koningsdag", "Nieuwjaarsdag",
+    # Shopping calendar
+    "Black Friday", "Cyber Monday",
+    # Holiday aggregates
+    "Holidays", "SpecialDays", "Kerst",
+    # Pure calendar numerics
+    "DAY_OF_YEAR", "WEEK_OF_YEAR", "MONTH", "YEAR",
+    # Fixed seasonal flags
+    "Herfst", "Zomer", "Mei", "Voorjaar",
+    # Model metadata
+    "FORECAST_DISTANCE",
+})
+
+
 # ── Data loading ──────────────────────────────────────────────────────────────
 
 def load_from_upload(uploaded_file: Any) -> pd.DataFrame:
@@ -696,7 +717,7 @@ def build_input_diff_table(
     skip = {date_col, ms_col, app_settings.target, f"{app_settings.target} (actual)"}
     numeric_cols = [
         c for c in p.select_dtypes(include="number").columns
-        if c not in skip and c in a.columns
+        if c not in skip and c in a.columns and c not in _IMMUTABLE_FEATURES
     ]
 
     if not numeric_cols:
