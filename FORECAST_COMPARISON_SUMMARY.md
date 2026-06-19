@@ -1,18 +1,18 @@
 # Forecast Comparison Feature — Implementation Summary
 
 **Branch:** `feat/forecast-comparison-page`  
-**Date:** 2026-06-19
+**Last updated:** 2026-06-19
 
 ---
 
 ## Overview
 
-Added a **Analysis of Drivers** page to the WFM Forecast Assistant that compares two time-series forecasts:
+Added an **Analysis of Drivers** page to the WFM Forecast Assistant that compares two time-series forecasts:
 
 - **Planned scenario** — forecast made with planned (expected) input feature values
 - **Actual scenario (Playback)** — forecast made with actual feature values, showing what the model would have predicted with perfect foresight
 
-The page is backed by a pre-computed cache for April 2026, so default views load instantly without live DR API calls.
+The page is backed by a pre-computed cache covering April–June 2026, so default views load instantly without live DR API calls. The **Forecast — Main** page now also overlays observed actuals on top of the live forecast chart.
 
 ---
 
@@ -20,7 +20,7 @@ The page is backed by a pre-computed cache for April 2026, so default views load
 
 ### New: `prepare_forecast_cache.py`
 
-Standalone script that pre-computes forecast data and writes `data/forecast_cache.csv`.
+Standalone script that pre-computes forecast data and writes `frontend/data/forecast_cache.csv`.
 
 **How it works:**
 - For each prediction week W in the selected horizon (default: 4 weeks of April 2026):
@@ -34,86 +34,130 @@ Standalone script that pre-computes forecast data and writes `data/forecast_cach
 - Falls back to DR AI Catalog download when local CSV files are absent
 - Uses codespace ambient auth; falls back to token-based auth for local use
 
-**Output:** `data/forecast_cache.csv` — 104 rows × 86 columns  
-(4 weeks × 2 scenarios × 13 forecast steps, with XEMP explanations and input features)
+**`--all` flag (added 2026-06-19):** auto-detects the full valid prediction-week range from source data — first week with 6 weeks of history through the last week with observed actuals.
+
+**Output:** `frontend/data/forecast_cache.csv`
 
 **Usage:**
 ```bash
-# In DataRobot Codespace (no token needed):
-python prepare_forecast_cache.py
-
-# Local use:
-set -a && source .env && set +a
+# Default (April 2026):
 python prepare_forecast_cache.py
 
 # Custom date range:
 python prepare_forecast_cache.py --start 2026-05-05 --end 2026-05-26
 
-# Append to existing cache:
-python prepare_forecast_cache.py --start 2026-05-05 --end 2026-05-26 --append
+# Full auto-detected range:
+python prepare_forecast_cache.py --all
+
+# Append to existing cache (skip already-cached weeks):
+python prepare_forecast_cache.py --start 2026-05-05 --end 2026-06-08 --append
+```
+
+---
+
+### New: `notebooks/nl_weekly_weather.py`
+
+Fetches real historical weather from the Open-Meteo archive API for 5 NL cities and aggregates to ISO Mon–Sun weeks. Replaces earlier fabricated weather data.
+
+```bash
+python nl_weekly_weather.py --start 2024-01-01   # Jan 2024 → today
 ```
 
 ---
 
 ### Changed: `frontend/pages/2_Analysis_of_Drivers.py`
 
-Previously `1_Feature_Comparison.py`. Significant additions:
+Previously `1_Feature_Comparison.py`.
 
 **Sidebar — Forecast Horizon selector**
 - Start/End week dropdowns populated from cached prediction weeks
-- Caption shows how many unique forecast dates will be loaded (e.g. "4 prediction weeks · 16 forecast dates")
-- "Custom (run live predictions)" checkbox reveals dataset upload UI for dates outside the cache
+- Default horizon pre-set to April–May 2026
+- Caption shows "N prediction weeks · M forecast dates"
 
 **Cache loading**
-- `_find_data_file()` searches multiple paths: repo root, codespace storage (`/home/notebooks/storage/...`), cwd, `/opt/code/data/`
-- `_read_cache()` / `_read_weather()` — `@st.cache_data` decorated, load once per session
-- `_load_from_cache(prediction_weeks, cache_df)` — loads all weeks in the selected range, preserves `forecast_step` and `prediction_week` in records for downstream filtering
+- `_find_data_file()` searches multiple paths: repo root, codespace storage, cwd, `/opt/code/data/`
+- `_read_cache()` / `_read_weather()` / `_read_actuals()` — `@st.cache_data`, load once per session
+- `_load_from_cache(prediction_weeks, cache_df)` — loads selected weeks, preserves `forecast_step` and `prediction_week` for downstream filtering
 
-**Main area — three selectors**
-| Selector | Purpose |
+**Main area — selectors**
+
+| Selector | Behaviour |
 |---|---|
-| Series ID | Filter to a specific SKILL series |
-| Forecast Week | Which future date is being forecasted (16 options across April horizon) |
-| Forecast Distance | How many weeks ahead the forecast was made (1–13) |
+| Series ID | Filter to a specific SKILL series; populated via `get_available_series()` using `COMPARISON_SERIES_COL` env var (default `SKILL`) |
+| Forecast Week | Multi-select; pre-selects the first week in range on load; resets when the cache range changes |
+| Forecast Distance | Single-select; pre-selects "4 weeks ahead" on load |
 
-The Forecast Distance filter pre-filters prediction records before all charts and the LLM summary, without changing chart function signatures.
+**Charts**
+- **Comparison chart** — planned vs playback forecast lines with weather event vertical bands; overlays observed actuals (green dotted diamond) from `actuals_lookup.csv`
+- **XEMP combined chart** — two-subplot (Planned / Actual) with a single union legend; SKILL_OFFERED_SUM features grouped in gray and hidden by default; immutable calendar features filtered out; per-scenario tooltip label ("Planned — date" / "Actual — date"); `hovermode="closest"` prevents cross-subplot tooltip bleed
+- **Weather panel** — 5-city aggregated gust bars (amber=storm, blue=wind/snow, purple=heavy rain) + avg temp line + 70 km/h threshold; prominent coloured legend annotations
+- **Input diff table** — numeric delta between planned and actual feature averages; immutable calendar features excluded; Vacations retained
+- **Feature detail chart** — below the diff table; defaults to the feature with the highest deviation; dropdown to select any feature with delta > 0
 
-**Weather — auto-loaded**
-- `data/nl_weekly_weather_2026.csv` is loaded automatically (no user upload required for April weeks)
-- Passed to the comparison chart (weather bands) and LLM summary
+**Weather legend** — replaced single grey annotation with 3 coloured per-event annotations (Fragment Mono, size 10).
 
 ---
 
 ### Changed: `forecastic/comparison_api.py`
 
-| Function | Change |
+| Change | Detail |
 |---|---|
-| `get_forecast_distances()` | New — returns sorted unique `forecast_step` values from prediction records |
-| `_aggregate_weather()` | New — aggregates 5-city weather to one row per `week_start` |
-| `_weather_band_color()` | New — maps event type to RGBA fill color (storm=amber, snow=blue, heavy_rain=purple) |
-| `build_weather_panel()` | New — 280px dual-axis chart: max gust bars (color-coded by event) + avg temp line + 70 km/h storm threshold |
-| `build_comparison_chart()` | Added `weather_df` param — overlays colored vertical bands on forecast weeks with adverse events |
-| `build_xemp_color_map()` | New — builds shared feature→color map across both scenarios for consistent XEMP colors |
-| `build_xemp_bar()` | Added `color_map` param; uses shared palette |
-| `_xemp_bar_df()` | Strips `(actual)` suffix from feature names; trims ISO timestamps to YYYY-MM-DD |
-| `_find_prediction_col()` | Dynamic detection — tries `TARGET_PREDICTION`, `PREDICTION`, then `endswith("_PREDICTION")` |
-| `_ensure_association_id()` | Constructs `SKILL_START_OF_WEEK` if `ASSOCIATION_ID` column is absent |
+| `_SERIES_COL` constant | `os.environ.get("COMPARISON_SERIES_COL", "SKILL")` — replaces `app_settings.multiseries_id_column` (which was `null`) throughout the file |
+| `get_available_series()` | Uses `_SERIES_COL` |
+| `_filter_preds()` / `_filter_df()` | Use `_SERIES_COL` |
+| `build_comparison_chart()` | Accepts `actuals_df` param; adds observed actuals trace; fixed `multiseries_id_column` → `_SERIES_COL` |
+| `build_input_diff_table()` | Filters `_IMMUTABLE_FEATURES` from skip set; removed dead `ms_col` assignment |
+| `build_feature_timeseries_chart()` | New — 260px line chart comparing planned vs actual values for a single feature over time; blue dashed = planned, purple solid = actual |
+| `build_xemp_combined()` | New — two-subplot XEMP with shared union legend via `legendgroup`; `hovermode="closest"`; per-scenario hover labels; SKILL features in gray, `visible="legendonly"` |
+| `build_xemp_color_map()` | SKILL_OFFERED_SUM features → `#606060`; others cycle `BAR_COLORS` |
+| `_xemp_bar_df()` | Filters `_IMMUTABLE_FEATURES` (DAY_OF_YEAR, WEEK_OF_YEAR, MONTH, etc.) from feature importance data |
+| `_IMMUTABLE_FEATURES` | New frozenset — calendar holidays and derived date features that cannot vary between planned/actual |
+| `_weather_band_color()` | Handles both `"wind"` and `"snow"` event labels → blue |
+| Weather legend | 3 separate coloured annotations replacing single grey one |
+| Forecast tooltip rounding | `hovertemplate` with `%{y:.3s}` on main forecast traces — shows `42.7k` not `42.7062k` |
 
 ---
 
-## Data Files
+### Changed: `forecastic/api.py`
 
-| File | Description | In Git |
-|---|---|---|
-| `data/forecast_cache.csv` | Pre-computed predictions for April 2026 (4 weeks × 2 scenarios × 13 steps) | ⚠️ Must be committed from codespace after running script |
-| `data/nl_weekly_weather_2026.csv` | Netherlands weather, 5 cities, weekly Dec 2025 – Jun 2026 | ✅ |
+| Change | Detail |
+|---|---|
+| `get_forecast_as_plotly_json()` | Added `actuals_df: Optional[pd.DataFrame] = None` parameter |
+| `_build_combined_figure()` | Added `actuals_df` parameter; adds "Observed Actuals" green dotted diamond trace on forecast panel (`row=1, col=2`) |
+| Fallback single-chart path | Same "Observed Actuals" trace added |
 
-**To commit the cache from the codespace:**
+---
+
+### Changed: `frontend/app.py`
+
+- Added `_load_actuals()` — loads `frontend/data/actuals_lookup.csv` with `@st.cache_data`
+- Filters actuals by user-selected series before passing to the chart
+- Passes `actuals_df` to `get_forecast_as_plotly_json`
+
+---
+
+### New data files
+
+| File | Description |
+|---|---|
+| `frontend/data/forecast_cache.csv` | Pre-computed predictions (prediction weeks Jan 2024 – Jun 2026 × 2 scenarios × 13 steps) |
+| `frontend/data/nl_weekly_weather_2026.csv` | Real Open-Meteo weather, 5 NL cities, Jan 2024 – Jun 2026 (640 rows) |
+| `frontend/data/actuals_lookup.csv` | Observed target values by week and SKILL, Jan 2024 – Jun 2026 (128 rows) |
+
+---
+
+### Changed: `.env.template`
+
+Added two new env vars:
+
 ```bash
-cd ~/storage/forecast-assistant
-git add data/forecast_cache.csv data/nl_weekly_weather_2026.csv
-git commit -m "data: add pre-computed forecast cache and NL weather data"
-git push
+# Column in the scoring dataset that identifies the time-series (skill group).
+# Defaults to "SKILL".
+# COMPARISON_SERIES_COL=SKILL
+
+# DR AI Catalog dataset containing observed actual target values.
+# Falls back to frontend/data/actuals_lookup.csv when not set.
+# ACTUALS_DATASET_ID=
 ```
 
 ---
@@ -147,3 +191,18 @@ Prediction Week W (e.g. 2026-04-06)
 ```
 
 The gap between the two forecast lines shows how much of the prediction variance is explained by the difference between planned and actual input features (e.g. weather events, operational changes).
+
+---
+
+## To redeploy
+
+```bash
+task deploy
+```
+
+Data files in `frontend/data/` are bundled automatically. If the cache needs rebuilding first:
+
+```bash
+set -a && source .env && set +a
+python prepare_forecast_cache.py --all
+```

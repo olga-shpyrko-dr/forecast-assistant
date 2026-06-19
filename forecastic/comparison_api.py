@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import os
 from typing import Any, List, Optional
 
 import datarobot as dr
@@ -31,6 +32,10 @@ from forecastic.api import (
 )
 from forecastic.resources import TimeSeriesDeployment
 from forecastic.schema import ComparisonSummary
+
+# Column in the scoring dataset that identifies the series (e.g. "SKILL").
+# Override with COMPARISON_SERIES_COL env var if the column name differs.
+_SERIES_COL: str = os.environ.get("COMPARISON_SERIES_COL", "SKILL")
 
 
 # Features that are fixed by the calendar and cannot differ between planned/actual scenarios.
@@ -102,11 +107,8 @@ def run_predictions(df: pd.DataFrame) -> list[dict[str, Any]]:
 # ── Selector helpers ──────────────────────────────────────────────────────────
 
 def get_available_series(planned_df: pd.DataFrame, actual_df: pd.DataFrame) -> list[str]:
-    ms_col = app_settings.multiseries_id_column
-    if not ms_col:
-        return []
-    planned = set(planned_df[ms_col].unique()) if ms_col in planned_df.columns else set()
-    actual = set(actual_df[ms_col].unique()) if ms_col in actual_df.columns else set()
+    planned = set(planned_df[_SERIES_COL].unique()) if _SERIES_COL in planned_df.columns else set()
+    actual  = set(actual_df[_SERIES_COL].unique())  if _SERIES_COL in actual_df.columns  else set()
     return sorted(planned | actual)
 
 
@@ -126,17 +128,15 @@ def get_forecast_dates(planned_preds: list[dict], actual_preds: list[dict]) -> l
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _filter_preds(preds: list[dict], series_id: Optional[str]) -> list[dict]:
-    ms_col = app_settings.multiseries_id_column
-    if not ms_col or not series_id:
+    if not series_id:
         return preds
-    return [r for r in preds if r.get(ms_col) == series_id]
+    return [r for r in preds if r.get(_SERIES_COL) == series_id]
 
 
 def _filter_df(df: pd.DataFrame, series_id: Optional[str]) -> pd.DataFrame:
-    ms_col = app_settings.multiseries_id_column
-    if not ms_col or not series_id or ms_col not in df.columns:
+    if not series_id or _SERIES_COL not in df.columns:
         return df
-    return df[df[ms_col] == series_id]
+    return df[df[_SERIES_COL] == series_id]
 
 
 def _find_prediction_col(preds_df: pd.DataFrame) -> str:
@@ -228,6 +228,7 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[list[str]] = None) -
         return pd.DataFrame(columns=["date_id", "feature", "strength"])
     combined = pd.concat(rows, ignore_index=True)
     combined["feature"] = combined["feature"].str.replace(r"\s*\(actual\)\s*$", "", regex=True).str.strip()
+    combined = combined[~combined["feature"].isin(_IMMUTABLE_FEATURES)]
     result = combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
     # Trim ISO timestamps to YYYY-MM-DD for readable axis labels
     result["date_id"] = result["date_id"].astype(str).str[:10]
@@ -317,6 +318,7 @@ def build_comparison_chart(
         mode="lines+markers", name="Forecast with Planned Inputs",
         line=dict(color="#44BFFC", width=1.8, dash="dash"),
         marker=dict(color="#44BFFC", size=5),
+        hovertemplate="<b>%{x}</b><br>Forecast with Planned Inputs: %{y:.3s}<extra></extra>",
     ))
 
     # Playback forecast band + line (purple solid)
@@ -335,6 +337,7 @@ def build_comparison_chart(
         mode="lines+markers", name="Playback Forecast (Actual Inputs)",
         line=dict(color="#909BF5", width=1.8),
         marker=dict(color="#909BF5", size=5),
+        hovertemplate="<b>%{x}</b><br>Playback Forecast (Actual Inputs): %{y:.3s}<extra></extra>",
     ))
 
     # What-If line (yellow dotted) — Stage 2
@@ -350,7 +353,7 @@ def build_comparison_chart(
     # Observed actuals overlay (green dotted) — forecast window ground truth
     if actuals_df is not None and not actuals_df.empty:
         date_col_a = app_settings.datetime_partition_column
-        ms_col_a = app_settings.multiseries_id_column
+        ms_col_a = _SERIES_COL
         obs = actuals_df.copy()
         if ms_col_a and ms_col_a in obs.columns and series_id:
             obs = obs[obs[ms_col_a] == series_id]
@@ -736,7 +739,6 @@ def build_input_diff_table(
 ) -> pd.DataFrame:
     """Numeric delta between planned and actual input DataFrames, sorted by |delta|."""
     date_col = app_settings.datetime_partition_column
-    ms_col = app_settings.multiseries_id_column
 
     p = _filter_df(planned_df, series_id).copy()
     a = _filter_df(actual_df, series_id).copy()
@@ -745,7 +747,7 @@ def build_input_diff_table(
         p = p[p[date_col].isin(selected_week)]
         a = a[a[date_col].isin(selected_week)]
 
-    skip = {date_col, ms_col, app_settings.target, f"{app_settings.target} (actual)"}
+    skip = {date_col, _SERIES_COL, app_settings.target, f"{app_settings.target} (actual)"}
     numeric_cols = [
         c for c in p.select_dtypes(include="number").columns
         if c not in skip and c in a.columns and c not in _IMMUTABLE_FEATURES
@@ -783,7 +785,6 @@ def build_feature_timeseries_chart(
 ) -> dict[str, Any]:
     """Line chart comparing planned vs actual values of a single feature over time."""
     date_col = app_settings.datetime_partition_column
-    ms_col = app_settings.multiseries_id_column
 
     p = _filter_df(planned_df, series_id).copy()
     a = _filter_df(actual_df,  series_id).copy()

@@ -488,6 +488,7 @@ def get_forecast_as_plotly_json(
     scoring_data: list[dict[str, Any]],
     n_historical_records_to_display: int,
     stacked_bar_df: Optional[pd.DataFrame] = None,
+    actuals_df: Optional[pd.DataFrame] = None,
 ) -> dict[str, Any]:
     """
     Render the forecast chart as a Plotly figure.
@@ -512,6 +513,7 @@ def get_forecast_as_plotly_json(
         return _build_combined_figure(
             history, forecast, stacked_bar_df, actual_col,
             target, datetime_partition_column,
+            actuals_df=actuals_df,
         )
 
     # ── Fallback: simple single-row chart ────────────────────────────────
@@ -542,6 +544,16 @@ def get_forecast_as_plotly_json(
         line=dict(color="#44BFFC", width=1.5),
         marker=dict(color="#44BFFC", size=5, symbol="circle"),
     ))
+    if actuals_df is not None and not actuals_df.empty:
+        obs = actuals_df[[datetime_partition_column, target]].dropna().sort_values(datetime_partition_column)
+        if not obs.empty:
+            fig.add_trace(go.Scatter(
+                x=obs[datetime_partition_column], y=obs[target],
+                mode="lines+markers", name=gettext("Observed Actuals"),
+                line=dict(color="#81FBA5", width=2, dash="dot"),
+                marker=dict(color="#81FBA5", size=6, symbol="diamond"),
+                hovertemplate="<b>%{x}</b><br>Observed: %{y:.3s}<extra></extra>",
+            ))
     fig.add_vline(
         x=history.loc[lambda x: ~pd.isna(x[actual_col]), "timestamp"].max(),
         line_width=1, line_dash="dash", line_color="#2a2a2a",
@@ -571,6 +583,7 @@ def _build_combined_figure(
     actual_col: str,
     target: str,
     datetime_partition_column: str,
+    actuals_df: Optional[pd.DataFrame] = None,
 ) -> dict[str, Any]:
     """2×2 combined layout: history | forecast / empty | stacked bar."""
 
@@ -627,6 +640,18 @@ def _build_combined_figure(
         marker=dict(color="#44BFFC", size=5, symbol="circle"),
         legend="legend",
     ), row=1, col=2)
+
+    if actuals_df is not None and not actuals_df.empty:
+        obs = actuals_df[[datetime_partition_column, target]].dropna().sort_values(datetime_partition_column)
+        if not obs.empty:
+            fig.add_trace(go.Scatter(
+                x=obs[datetime_partition_column], y=obs[target],
+                mode="lines+markers", name=gettext("Observed Actuals"),
+                line=dict(color="#81FBA5", width=2, dash="dot"),
+                marker=dict(color="#81FBA5", size=6, symbol="diamond"),
+                legend="legend",
+                hovertemplate="<b>%{x}</b><br>Observed: %{y:.3s}<extra></extra>",
+            ), row=1, col=2)
 
     # ── Bottom-right: stacked bar (XEMP) ────────────────────────────────
     for i, feat in enumerate(stacked_bar_df["feature"].unique()):

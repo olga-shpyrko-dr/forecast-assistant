@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import sys
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -37,6 +39,17 @@ from forecastic.i18n import gettext
 from forecastic.schema import FilterSpec
 
 CHART_CONFIG = {"displayModeBar": False, "responsive": True}
+
+_DATA_DIR = Path(__file__).parent / "data"
+_ACTUALS_CSV = _DATA_DIR / "actuals_lookup.csv"
+
+
+@st.cache_data
+def _load_actuals() -> pd.DataFrame:
+    """Load observed actuals from local CSV (fallback for ACTUALS_DATASET_ID)."""
+    if _ACTUALS_CSV.exists():
+        return pd.read_csv(_ACTUALS_CSV)
+    return pd.DataFrame()
 
 
 sys.setrecursionlimit(10000)
@@ -160,9 +173,17 @@ def fpa() -> None:
 
             stacked_bar_df = get_pred_ex_stacked_bar_df(forecast_raw)
             st.session_state["stacked_bar_df"] = stacked_bar_df
+
+            actuals_df = _load_actuals()
+            if not actuals_df.empty:
+                for fs in series_selections:
+                    if fs.selected_values and fs.column in actuals_df.columns:
+                        actuals_df = actuals_df[actuals_df[fs.column].isin(fs.selected_values)]
+
             st.session_state["chart_json"] = get_forecast_as_plotly_json(
                 scoring_data, n_historical_records_to_display,
                 stacked_bar_df=stacked_bar_df,
+                actuals_df=actuals_df if not actuals_df.empty else None,
             )
 
         with st.spinner(gettext("Generating explanation...")):
