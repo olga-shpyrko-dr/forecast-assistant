@@ -247,3 +247,10 @@ class AppRuntimeAttributes(BaseModel):
     app_urls: AppUrls
     app_creator_email: str
     app_latest_created_date: str
+
+
+class ComparisonSummary(BaseModel):
+    headline: str
+    why_forecasts_differ: str
+    insights_to_explore: str
+    weather_connection: Optional[str] = None

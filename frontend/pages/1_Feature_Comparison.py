@@ -1,0 +1,367 @@
+# Copyright 2024 DataRobot, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import sys
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+sys.path.append("..")
+
+from forecastic.api import LLMNotAvailableException, get_app_settings
+from forecastic.comparison_api import (
+    build_comparison_chart,
+    build_input_diff_table,
+    build_xemp_bar,
+    get_available_series,
+    get_comparison_llm_summary,
+    get_forecast_dates,
+    load_from_catalog,
+    run_predictions,
+)
+
+CHART_CONFIG = {"displayModeBar": False, "responsive": True}
+
+sys.setrecursionlimit(10000)
+app_settings = get_app_settings()
+
+st.set_page_config(
+    page_title="Forecast Comparison",
+    layout="wide",
+    page_icon="./datarobot_favicon.png",
+)
+
+with open("./style.css") as f:
+    css = f.read()
+st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+
+# ── Reusable dataset-input block ──────────────────────────────────────────────
+
+def _dataset_input(label: str, key_prefix: str) -> pd.DataFrame | None:
+    """Render upload / catalog-ID toggle. Returns cached DataFrame or None."""
+    mode = st.radio(
+        f"{label} source",
+        options=["Upload CSV", "Load from Catalog"],
+        key=f"{key_prefix}_mode",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    if mode == "Upload CSV":
+        uploaded = st.file_uploader(
+            f"Upload {label} CSV",
+            type=["csv"],
+            key=f"{key_prefix}_upload",
+            label_visibility="collapsed",
+        )
+        if uploaded is not None:
+            df = pd.read_csv(uploaded)
+            st.session_state[f"{key_prefix}_df"] = df
+    else:
+        col_id, col_btn = st.columns([3, 1])
+        dataset_id = col_id.text_input(
+            "DataRobot Dataset ID",
+            key=f"{key_prefix}_catalog_id",
+            placeholder="e.g. 66a1b2c3...",
+            label_visibility="collapsed",
+        )
+        if col_btn.button("Load", key=f"{key_prefix}_load_btn"):
+            if dataset_id.strip():
+                try:
+                    with st.spinner("Loading from Catalog…"):
+                        df = load_from_catalog(dataset_id.strip())
+                    st.session_state[f"{key_prefix}_df"] = df
+                    st.success(f"Loaded {len(df):,} rows")
+                except Exception as e:
+                    st.error(f"Failed to load: {e}")
+
+    cached = st.session_state.get(f"{key_prefix}_df")
+    if cached is not None:
+        st.caption(f"{len(cached):,} rows loaded")
+    return cached
+
+
+# ── Main page ─────────────────────────────────────────────────────────────────
+
+def feature_comparison_page() -> None:
+    # ── Header ────────────────────────────────────────────────────────────────
+    with st.container(key="dr-logo-comparison"):
+        logo_col, title_col = st.columns([1, 4])
+        with logo_col:
+            st.image("./DataRobot_white.svg", width=160)
+        with title_col:
+            st.markdown(
+                """
+                <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;
+                    text-transform:uppercase;letter-spacing:0.1em;
+                    color:#81FBA5;margin-bottom:2px;'>FORECAST COMPARISON</p>
+                <h1 style='font-family:"DM Sans",sans-serif;font-weight:500;
+                    font-size:1.5rem;color:#FFFFFF;margin:0;letter-spacing:-0.01em;'>
+                    Planned vs Actual Feature Impact</h1>
+                """,
+                unsafe_allow_html=True,
+            )
+    st.markdown(
+        "<hr style='border:none;border-top:1px solid #1e1e1e;margin:12px 0 20px;'/>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Sidebar ───────────────────────────────────────────────────────────────
+    with st.sidebar:
+        _section_label("PLANNED FEATURES", "#81FBA5")
+        planned_df = _dataset_input("Planned Features", "planned")
+
+        _divider()
+        _section_label("ACTUAL FEATURES", "#81FBA5")
+        actual_df = _dataset_input("Actual Features", "actual")
+
+        _divider()
+        _section_label("WHAT-IF SCENARIO  (optional)", "#909BF5")
+        whatif_df = _dataset_input("What-If", "whatif")
+
+        _divider()
+        _section_label("WEATHER DATA  (optional)", "#44BFFC")
+        weather_file = st.file_uploader(
+            "Upload Netherlands weather CSV",
+            type=["csv"],
+            key="weather_upload",
+            label_visibility="collapsed",
+            help="Expected columns: date, temp_avg_c, precipitation_mm, storm_flag",
+        )
+        if weather_file is not None:
+            st.session_state["weather_df"] = pd.read_csv(weather_file)
+        if st.session_state.get("weather_df") is not None:
+            st.caption(f"{len(st.session_state['weather_df']):,} weather rows loaded")
+
+        _divider()
+        n_history = st.number_input(
+            "Historical records to show",
+            min_value=10, max_value=200,
+            value=min(52, app_settings.maximum_default_display_length),
+            step=4,
+        )
+        run_btn = st.button("Run Comparison", type="primary", use_container_width=True)
+
+    # ── Run predictions ───────────────────────────────────────────────────────
+    if run_btn:
+        if planned_df is None or actual_df is None:
+            st.warning("Please load both **Planned** and **Actual** feature datasets before running.")
+            st.stop()
+
+        with st.spinner("Running forecasts for both scenarios…"):
+            try:
+                planned_preds = run_predictions(planned_df)
+                actual_preds = run_predictions(actual_df)
+            except Exception as e:
+                st.error(f"Prediction failed: {e}")
+                st.stop()
+
+        whatif_preds: list[dict] | None = None
+        if whatif_df is not None:
+            with st.spinner("Running what-if forecast…"):
+                try:
+                    whatif_preds = run_predictions(whatif_df)
+                except Exception as e:
+                    st.warning(f"What-if prediction failed (skipped): {e}")
+
+        st.session_state["planned_preds"] = planned_preds
+        st.session_state["actual_preds"] = actual_preds
+        st.session_state["planned_df"] = planned_df
+        st.session_state["actual_df"] = actual_df
+        st.session_state["whatif_preds"] = whatif_preds
+        st.session_state["available_series"] = get_available_series(planned_df, actual_df)
+        st.session_state["forecast_dates"] = get_forecast_dates(planned_preds, actual_preds)
+        st.session_state["comparison_summaries"] = {}  # clear cache on new run
+
+    # ── Guard: nothing loaded yet ─────────────────────────────────────────────
+    if "planned_preds" not in st.session_state:
+        st.info(
+            "Load your **Planned** and **Actual** feature files in the sidebar, "
+            "then click **Run Comparison**."
+        )
+        return
+
+    planned_preds = st.session_state["planned_preds"]
+    actual_preds = st.session_state["actual_preds"]
+    planned_df_s: pd.DataFrame = st.session_state["planned_df"]
+    actual_df_s: pd.DataFrame = st.session_state["actual_df"]
+    whatif_preds = st.session_state.get("whatif_preds")
+    weather_df_s: pd.DataFrame | None = st.session_state.get("weather_df")
+    available_series: list[str] = st.session_state.get("available_series", [])
+    forecast_dates: list[str] = st.session_state.get("forecast_dates", [])
+
+    # ── Selectors (series + forecast week) ────────────────────────────────────
+    sel_col1, sel_col2 = st.columns([1, 2])
+    with sel_col1:
+        if available_series:
+            # Initialize to first series on first render after a new run
+            if st.session_state.get("_series_options") != available_series:
+                st.session_state["_series_options"] = available_series
+                st.session_state["selected_series"] = available_series[0]
+            selected_series: str | None = st.selectbox(
+                "Series ID", options=available_series, key="selected_series"
+            )
+        else:
+            selected_series = None
+            st.caption("No multiseries ID column found")
+
+    with sel_col2:
+        week_options = ["All weeks"] + forecast_dates
+        selected_week_label: str = st.selectbox(
+            "Forecast week", options=week_options, key="selected_week",
+        )
+        selected_week: str | None = (
+            None if selected_week_label == "All weeks" else selected_week_label
+        )
+
+    # ── LLM analysis (cached per series+week) ────────────────────────────────
+    if "comparison_summaries" not in st.session_state:
+        st.session_state["comparison_summaries"] = {}
+
+    summary_key = (selected_series, selected_week)
+    if summary_key not in st.session_state["comparison_summaries"]:
+        with st.spinner("Generating AI comparison analysis…"):
+            try:
+                summary = get_comparison_llm_summary(
+                    planned_preds, actual_preds,
+                    planned_df_s, actual_df_s,
+                    series_id=selected_series,
+                    selected_week=selected_week,
+                    weather_df=weather_df_s,
+                    whatif_preds=whatif_preds,
+                )
+                st.session_state["comparison_summaries"][summary_key] = summary
+            except LLMNotAvailableException:
+                st.session_state["comparison_summaries"][summary_key] = None
+
+    summary = st.session_state["comparison_summaries"].get(summary_key)
+
+    # ── Overlay forecast chart ────────────────────────────────────────────────
+    chart_json = build_comparison_chart(
+        planned_preds, actual_preds, planned_df_s,
+        n_history=int(n_history),
+        series_id=selected_series,
+        selected_week=selected_week,
+        whatif_preds=whatif_preds,
+    )
+    st.plotly_chart(go.Figure(chart_json), config=CHART_CONFIG, use_container_width=True)
+
+    # ── XEMP feature impact side by side ─────────────────────────────────────
+    xemp_col1, xemp_col2 = st.columns(2)
+    with xemp_col1:
+        xemp_planned = build_xemp_bar(
+            planned_preds, series_id=selected_series,
+            selected_week=selected_week, label="Planned",
+        )
+        st.plotly_chart(go.Figure(xemp_planned), config=CHART_CONFIG, use_container_width=True)
+    with xemp_col2:
+        xemp_actual = build_xemp_bar(
+            actual_preds, series_id=selected_series,
+            selected_week=selected_week, label="Actual",
+        )
+        st.plotly_chart(go.Figure(xemp_actual), config=CHART_CONFIG, use_container_width=True)
+
+    # ── Input feature differences table ──────────────────────────────────────
+    week_label_str = f"  —  Week: {selected_week}" if selected_week else "  —  All weeks"
+    with st.expander(f"Input feature differences{week_label_str}"):
+        diff_df = build_input_diff_table(
+            planned_df_s, actual_df_s,
+            series_id=selected_series,
+            selected_week=selected_week,
+        )
+        if not diff_df.empty:
+            st.dataframe(
+                diff_df.style.background_gradient(subset=["delta"], cmap="RdYlGn", axis=0),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.write("No comparable numeric feature columns found in both files.")
+
+    # ── AI Analysis ───────────────────────────────────────────────────────────
+    if summary:
+        st.markdown(
+            "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.7rem;"
+            "text-transform:uppercase;letter-spacing:0.1em;"
+            "color:#81FBA5;margin-bottom:6px;margin-top:28px;'>AI GENERATED ANALYSIS</p>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"<p style='font-family:\"DM Sans\",sans-serif;font-size:1rem;font-weight:500;"
+            f"color:#FFFF54;margin-bottom:14px;'>{summary.headline}</p>",
+            unsafe_allow_html=True,
+        )
+
+        why_col, insights_col = st.columns(2)
+        with why_col:
+            st.markdown(
+                "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
+                "text-transform:uppercase;letter-spacing:0.08em;"
+                "color:#909BF5;margin-bottom:4px;'>Why Forecasts Differ</p>",
+                unsafe_allow_html=True,
+            )
+            st.write(summary.why_forecasts_differ)
+        with insights_col:
+            st.markdown(
+                "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
+                "text-transform:uppercase;letter-spacing:0.08em;"
+                "color:#44BFFC;margin-bottom:4px;'>Insights to Explore</p>",
+                unsafe_allow_html=True,
+            )
+            st.write(summary.insights_to_explore)
+
+        if summary.weather_connection:
+            st.markdown(
+                "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
+                "text-transform:uppercase;letter-spacing:0.08em;"
+                "color:#FFFF54;margin-top:16px;margin-bottom:4px;'>Weather Connection</p>",
+                unsafe_allow_html=True,
+            )
+            st.write(summary.weather_connection)
+    elif summary is None and "comparison_summaries" in st.session_state:
+        st.caption("AI analysis unavailable — LLM deployment not configured.")
+
+
+# ── Small styling helpers ──────────────────────────────────────────────────────
+
+def _section_label(text: str, color: str = "#81FBA5") -> None:
+    st.markdown(
+        f"<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
+        f"text-transform:uppercase;letter-spacing:0.1em;color:{color};"
+        f"margin-bottom:4px;margin-top:2px;'>{text}</p>",
+        unsafe_allow_html=True,
+    )
+
+
+def _divider() -> None:
+    st.markdown(
+        "<hr style='border:none;border-top:1px solid #1e1e1e;margin:10px 0;'/>",
+        unsafe_allow_html=True,
+    )
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def _main() -> None:
+    st.markdown(
+        "<style>#MainMenu{visibility:hidden;}header{visibility:hidden;}"
+        "footer{visibility:hidden;}</style>",
+        unsafe_allow_html=True,
+    )
+    feature_comparison_page()
+
+
+if __name__ == "__main__":
+    _main()
