@@ -607,10 +607,9 @@ def build_xemp_combined(
         font=dict(family="Fragment Mono, monospace", size=9, color="#81FBA5"),
     )
 
+    fig.update_layout(**_LAYOUT_BASE, height=500)
     fig.update_layout(
-        **_LAYOUT_BASE,
-        hovermode="closest",  # each bar shows its own tooltip; avoids cross-subplot bleed
-        height=500,
+        hovermode="closest",  # override _LAYOUT_BASE's "x unified"; avoids cross-subplot bleed
         barmode="relative",
         showlegend=True,
         legend=dict(
