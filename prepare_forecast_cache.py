@@ -12,7 +12,7 @@ scoring inputs and runs predictions:
     FDW (−6…0 wks): actual historical values   ← from ACTUAL file
     FW  (+1…+13 wks): ACTUAL feature values     ← from ACTUAL file, target=NaN
 
-Output: data/forecast_cache.csv
+Output: frontend/data/forecast_cache.csv
   Columns: prediction_week, scenario, START_OF_WEEK, forecast_step,
            + all prediction columns (SKILL_OFFERED_SUM_PREDICTION, intervals,
              EXPLANATION_N_FEATURE_NAME, EXPLANATION_N_STRENGTH)
@@ -26,6 +26,12 @@ Usage
 
   # custom range (any Mondays in the source files)
   python prepare_forecast_cache.py --start 2026-05-04 --end 2026-05-25
+
+  # full range auto-detected from source data (all weeks with real actual history)
+  python prepare_forecast_cache.py --all
+
+  # append new weeks to existing cache (avoids re-running already-cached weeks)
+  python prepare_forecast_cache.py --start 2026-05-05 --end 2026-06-08 --append
 """
 from __future__ import annotations
 
@@ -141,6 +147,32 @@ def _weekly_dates_between(start: str, end: str, source_index: pd.Index) -> list[
     return [d for d in all_dates if start <= d <= end]
 
 
+def _full_valid_range(
+    actual_df: pd.DataFrame,
+) -> tuple[str, str]:
+    """
+    Derive the widest meaningful prediction-week range from source data.
+
+    First valid week: first source date + FDW_START_WKS weeks (need 6 weeks of history).
+    Last valid week:  last date in actual_df that has a non-NaN target value
+                      (so the FDW contains real observed history, not future planned rows).
+    """
+    all_dates = sorted(actual_df.index)
+    first_date = pd.Timestamp(all_dates[0])
+    first_valid = (first_date - pd.Timedelta(weeks=FDW_START_WKS)).strftime("%Y-%m-%d")
+
+    # Last date with a real observed target
+    has_target = actual_df[TARGET_COL].notna()
+    actual_dates = sorted(actual_df[has_target].index)
+    last_valid = actual_dates[-1] if actual_dates else all_dates[-1]
+
+    # Clamp first_valid to dates actually present in the source
+    first_valid = next((d for d in all_dates if d >= first_valid), all_dates[0])
+
+    print(f"  Auto-detected range: {first_valid} → {last_valid}")
+    return first_valid, last_valid
+
+
 def _build_scoring_input(
     prediction_week: str,
     actual_df: pd.DataFrame,
@@ -252,8 +284,8 @@ def _enrich_predictions(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def prepare_cache(
-    start_date: str,
-    end_date: str,
+    start_date: str | None,
+    end_date: str | None,
     append_to_existing: bool = False,
 ) -> pd.DataFrame:
     print("\n── Initialising ─────────────────────────────────────────────")
@@ -261,6 +293,10 @@ def prepare_cache(
 
     print("\n── Loading source files ──────────────────────────────────────")
     planned_df, actual_df = _load_data()
+
+    if start_date is None or end_date is None:
+        print("\n── Auto-detecting full valid range ───────────────────────────")
+        start_date, end_date = _full_valid_range(actual_df)
 
     prediction_weeks = _weekly_dates_between(start_date, end_date, actual_df.index)
     if not prediction_weeks:
@@ -320,19 +356,30 @@ def prepare_cache(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare WFM forecast cache")
     parser.add_argument(
-        "--start", default=DEFAULT_START,
+        "--start", default=None,
         help=f"First prediction week (YYYY-MM-DD, Monday). Default: {DEFAULT_START}"
     )
     parser.add_argument(
-        "--end", default=DEFAULT_END,
+        "--end", default=None,
         help=f"Last prediction week (YYYY-MM-DD, Monday). Default: {DEFAULT_END}"
+    )
+    parser.add_argument(
+        "--all", dest="use_all", action="store_true",
+        help="Auto-detect the full valid range from source data (all weeks with real history)."
     )
     parser.add_argument(
         "--append", action="store_true",
         help="Append to existing cache instead of overwriting."
     )
     args = parser.parse_args()
-    prepare_cache(args.start, args.end, append_to_existing=args.append)
+
+    if args.use_all:
+        start, end = None, None
+    else:
+        start = args.start or DEFAULT_START
+        end   = args.end   or DEFAULT_END
+
+    prepare_cache(start, end, append_to_existing=args.append)
 
 
 if __name__ == "__main__":
