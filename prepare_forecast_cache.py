@@ -76,11 +76,18 @@ DEFAULT_END   = "2026-04-27"
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _init_dr_client() -> None:
-    """Initialise DR client, decoding base64 token if needed (codespace pattern)."""
+    """Initialise DR client. In a Codespace, credentials are pre-configured so no token needed."""
+    try:
+        dr.Client()
+        print(f"  DR client ready  (codespace auth)")
+        return
+    except Exception:
+        pass
+    # Fallback: explicit token from environment (local / non-codespace use)
     token = DR_TOKEN_RAW
     try:
         decoded = base64.b64decode(token).decode("utf-8")
-        if ":" in decoded:          # looks like keyId:secret
+        if ":" in decoded:
             token = decoded
     except Exception:
         pass
