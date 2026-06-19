@@ -237,25 +237,25 @@ def build_comparison_chart(
         ))
     fig.add_trace(go.Scatter(
         x=planned_fc["date_id"], y=planned_fc["prediction"],
-        mode="lines+markers", name="Planned Forecast",
+        mode="lines+markers", name="Forecast with Planned Inputs",
         line=dict(color="#44BFFC", width=1.8, dash="dash"),
         marker=dict(color="#44BFFC", size=5),
     ))
 
-    # Actual confidence band + line (purple solid)
+    # Playback forecast band + line (purple solid)
     if actual_fc["low"].notna().any():
         fig.add_trace(go.Scatter(
             x=actual_fc["date_id"], y=actual_fc["low"], mode="lines",
-            line=dict(color="#909BF5", width=0.8, dash="dot"), showlegend=False, name="Actual Low",
+            line=dict(color="#909BF5", width=0.8, dash="dot"), showlegend=False, name="Playback Low",
         ))
         fig.add_trace(go.Scatter(
             x=actual_fc["date_id"], y=actual_fc["high"], mode="lines",
             line=dict(color="#909BF5", width=0.8, dash="dot"),
-            fill="tonexty", fillcolor="rgba(144,155,245,0.07)", showlegend=False, name="Actual High",
+            fill="tonexty", fillcolor="rgba(144,155,245,0.07)", showlegend=False, name="Playback High",
         ))
     fig.add_trace(go.Scatter(
         x=actual_fc["date_id"], y=actual_fc["prediction"],
-        mode="lines+markers", name="Actual Forecast",
+        mode="lines+markers", name="Playback Forecast (Actual Inputs)",
         line=dict(color="#909BF5", width=1.8),
         marker=dict(color="#909BF5", size=5),
     ))
