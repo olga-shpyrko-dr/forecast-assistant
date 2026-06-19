@@ -182,6 +182,7 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[str] = None) -> pd.D
     if not rows:
         return pd.DataFrame(columns=["date_id", "feature", "strength"])
     combined = pd.concat(rows, ignore_index=True)
+    combined["feature"] = combined["feature"].str.replace(r"\s*\(actual\)\s*$", "", regex=True).str.strip()
     result = combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
     # Trim ISO timestamps to YYYY-MM-DD for readable axis labels
     result["date_id"] = pd.to_datetime(result["date_id"], utc=True, errors="coerce").dt.strftime("%Y-%m-%d").fillna(result["date_id"])
