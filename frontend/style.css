@@ -79,16 +79,18 @@ button[data-testid="baseButton-secondaryFormSubmit"]:hover {
 }
 
 button[data-testid="baseButton-primary"] {
-    background: #81FBA5 !important;
-    color: #0B0B0B !important;
-    border: none !important;
+    background: #0B0B0B !important;
+    color: #FFFFFF !important;
+    border: 2px solid #81FBA5 !important;
     font-family: 'DM Sans', sans-serif !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     border-radius: 4px !important;
+    letter-spacing: 0.02em !important;
 }
 
 button[data-testid="baseButton-primary"]:hover {
-    background: #BFFD7E !important;
+    background: #81FBA5 !important;
+    color: #0B0B0B !important;
 }
 
 /* ── Inputs & Multiselect ────────────────────────────── */
@@ -157,24 +159,36 @@ div[data-testid="stAlertInfo"],
 div[data-testid="stAlertSuccess"],
 div[data-testid="stAlertWarning"],
 div[data-testid="stAlertError"],
-.stAlert {
-    background-color: #1a1a1a !important;
+.stAlert,
+div[data-testid="stAlert"] > div,
+div[data-testid="stAlertInfo"] > div,
+div[data-testid="stAlertSuccess"] > div,
+div[data-testid="stAlertWarning"] > div,
+div[data-testid="stAlertError"] > div {
+    background-color: #0B0B0B !important;
     border-radius: 4px !important;
-    color: #E4E4E4 !important;
+    color: #FFFFFF !important;
 }
 
-/* Info → yellow left bar */
-div[data-testid="stAlertInfo"] {
-    border-left: 3px solid #FFFF54 !important;
+/* Info → white left bar, white text */
+div[data-testid="stAlertInfo"],
+div[data-testid="stAlertInfo"] > div {
+    border-left: 3px solid #FFFFFF !important;
+    background-color: #0B0B0B !important;
 }
-div[data-testid="stAlertInfo"] svg,
-div[data-testid="stAlertInfo"] [data-testid="stAlertIcon"] {
-    color: #FFFF54 !important;
-    fill: #FFFF54 !important;
+div[data-testid="stAlertInfo"] p,
+div[data-testid="stAlertInfo"] span {
+    color: #FFFFFF !important;
 }
 div[data-testid="stAlertInfo"] a,
 div[data-testid="stAlertInfo"] strong {
-    color: #FFFF54 !important;
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+}
+div[data-testid="stAlertInfo"] svg,
+div[data-testid="stAlertInfo"] [data-testid="stAlertIcon"] {
+    color: #FFFFFF !important;
+    fill: #FFFFFF !important;
 }
 
 /* Success → green left bar */
