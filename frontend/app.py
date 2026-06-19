@@ -139,6 +139,7 @@ def fpa() -> None:
             value=min(200, app_settings.maximum_default_display_length),
             step=10,
         )
+        show_llm = st.checkbox("Show AI commentary", value=False, key="show_llm_main")
     if sidebarSubmit:
         with st.spinner(gettext("Processing forecast...")):
             selected_label = st.session_state.get("selected_version_label")
@@ -186,16 +187,16 @@ def fpa() -> None:
                 actuals_df=actuals_df if not actuals_df.empty else None,
             )
 
-        with st.spinner(gettext("Generating explanation...")):
-            try:
-                forecast_summary = get_llm_summary(forecast_raw)
-                st.session_state["headline"] = forecast_summary.headline
-                st.session_state["forecast_interpretation"] = (
-                    forecast_summary.summary_body
-                )
-
-            except LLMNotAvailableException:
-                pass
+        if show_llm:
+            with st.spinner(gettext("Generating explanation...")):
+                try:
+                    forecast_summary = get_llm_summary(forecast_raw)
+                    st.session_state["headline"] = forecast_summary.headline
+                    st.session_state["forecast_interpretation"] = (
+                        forecast_summary.summary_body
+                    )
+                except LLMNotAvailableException:
+                    pass
         st.session_state["explanations_df"] = clean_column_headers(
             get_explain_df(forecast_raw)
         )
@@ -208,7 +209,7 @@ def fpa() -> None:
         )
 
     with explanationContainer:
-        if "forecast_interpretation" in st.session_state:
+        if show_llm and "forecast_interpretation" in st.session_state:
             st.markdown(
                 f"""
                 <p style='font-family:"Fragment Mono",monospace;font-size:0.7rem;

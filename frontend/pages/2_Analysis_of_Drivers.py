@@ -275,6 +275,7 @@ def feature_comparison_page() -> None:
             value=min(52, app_settings.maximum_default_display_length),
             step=4,
         )
+        show_llm = st.checkbox("Show AI commentary", value=False, key="show_llm_drivers")
         run_btn = st.button("Run Comparison", type="primary", use_container_width=True)
 
     # ── Run predictions ───────────────────────────────────────────────────────
@@ -402,27 +403,28 @@ def feature_comparison_page() -> None:
         planned_preds_v = planned_preds
         actual_preds_v  = actual_preds
 
-    # ── LLM analysis (cached per series+week+distance) ───────────────────────
+    # ── LLM analysis (cached per series+week+distance, only when enabled) ───────
     if "comparison_summaries" not in st.session_state:
         st.session_state["comparison_summaries"] = {}
 
-    summary_key = (selected_series, tuple(sorted(selected_week)) if selected_week else None, selected_distance)
-    if summary_key not in st.session_state["comparison_summaries"]:
-        with st.spinner("Generating AI comparison analysis…"):
-            try:
-                summary = get_comparison_llm_summary(
-                    planned_preds_v, actual_preds_v,
-                    planned_df_s, actual_df_s,
-                    series_id=selected_series,
-                    selected_week=selected_week,
-                    weather_df=weather_df_s,
-                    whatif_preds=whatif_preds,
-                )
-                st.session_state["comparison_summaries"][summary_key] = summary
-            except LLMNotAvailableException:
-                st.session_state["comparison_summaries"][summary_key] = None
-
-    summary = st.session_state["comparison_summaries"].get(summary_key)
+    summary = None
+    if show_llm:
+        summary_key = (selected_series, tuple(sorted(selected_week)) if selected_week else None, selected_distance)
+        if summary_key not in st.session_state["comparison_summaries"]:
+            with st.spinner("Generating AI comparison analysis…"):
+                try:
+                    summary = get_comparison_llm_summary(
+                        planned_preds_v, actual_preds_v,
+                        planned_df_s, actual_df_s,
+                        series_id=selected_series,
+                        selected_week=selected_week,
+                        weather_df=weather_df_s,
+                        whatif_preds=whatif_preds,
+                    )
+                    st.session_state["comparison_summaries"][summary_key] = summary
+                except LLMNotAvailableException:
+                    st.session_state["comparison_summaries"][summary_key] = None
+        summary = st.session_state["comparison_summaries"].get(summary_key)
 
     # ── Overlay forecast chart ────────────────────────────────────────────────
     chart_json = build_comparison_chart(
