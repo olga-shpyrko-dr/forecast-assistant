@@ -545,7 +545,10 @@ def get_forecast_as_plotly_json(
         marker=dict(color="#44BFFC", size=5, symbol="circle"),
     ))
     if actuals_df is not None and not actuals_df.empty:
-        obs = actuals_df[[datetime_partition_column, target]].dropna().sort_values(datetime_partition_column)
+        fc_dates = set(forecast["date_id"].astype(str).str[:10])
+        obs = actuals_df[[datetime_partition_column, target]].dropna()
+        obs = obs[obs[datetime_partition_column].astype(str).str[:10].isin(fc_dates)]
+        obs = obs.sort_values(datetime_partition_column)
         if not obs.empty:
             fig.add_trace(go.Scatter(
                 x=obs[datetime_partition_column], y=obs[target],
@@ -642,7 +645,10 @@ def _build_combined_figure(
     ), row=1, col=2)
 
     if actuals_df is not None and not actuals_df.empty:
-        obs = actuals_df[[datetime_partition_column, target]].dropna().sort_values(datetime_partition_column)
+        fc_dates = set(forecast["date_id"].astype(str).str[:10])
+        obs = actuals_df[[datetime_partition_column, target]].dropna()
+        obs = obs[obs[datetime_partition_column].astype(str).str[:10].isin(fc_dates)]
+        obs = obs.sort_values(datetime_partition_column)
         if not obs.empty:
             fig.add_trace(go.Scatter(
                 x=obs[datetime_partition_column], y=obs[target],
@@ -762,6 +768,15 @@ def get_pred_ex_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
     return pred_ex_df
 
 
+_IMMUTABLE_FEATURES: frozenset[str] = frozenset({
+    "1e Kerstdag", "2e Kerstdag", "1e Paasdag", "2e Paasdag",
+    "1e Pinksterdag", "2e Pinksterdag", "Bevrijdingsdag", "Hemelvaartsdag",
+    "Koningsdag", "Nieuwjaarsdag", "Black Friday", "Cyber Monday",
+    "Holidays", "SpecialDays", "Kerst", "DAY_OF_YEAR", "WEEK_OF_YEAR",
+    "MONTH", "YEAR", "Herfst", "Zomer", "Mei", "Voorjaar", "FORECAST_DISTANCE",
+})
+
+
 def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
     """Returns per-timestep per-feature XEMP strength, grouped for a stacked bar chart."""
     preds_df = pd.DataFrame(preds)
@@ -779,6 +794,8 @@ def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(columns=["date_id", "feature", "strength"])
     combined = pd.concat(rows, ignore_index=True)
+    combined["feature"] = combined["feature"].str.replace(r"\s*\(actual\)\s*$", "", regex=True).str.strip()
+    combined = combined[~combined["feature"].isin(_IMMUTABLE_FEATURES)]
     return combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
 
 
