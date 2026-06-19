@@ -141,10 +141,10 @@ def _read_weather() -> pd.DataFrame | None:
 
 
 def _load_from_cache(
-    prediction_week: str, cache_df: pd.DataFrame
+    prediction_weeks: list[str], cache_df: pd.DataFrame
 ) -> tuple[list[dict], list[dict], pd.DataFrame, pd.DataFrame]:
-    """Return (planned_preds, actual_preds, planned_input_df, actual_input_df) from cache."""
-    w = cache_df[cache_df["prediction_week"] == prediction_week]
+    """Load all prediction weeks in the range; returns union of their forecast dates."""
+    w = cache_df[cache_df["prediction_week"].isin(prediction_weeks)]
 
     meta_cols = {"prediction_week", "scenario", "forecast_step"}
     pred_cols = {c for c in cache_df.columns if "PREDICTION" in c.upper() or "PERCENTILE" in c.upper() or "EXPLANATION" in c.upper()}
@@ -193,23 +193,32 @@ def feature_comparison_page() -> None:
         cache_df = _read_cache()
         if cache_df is not None:
             cached_weeks = sorted(cache_df["prediction_week"].unique().tolist())
-            week_options = cached_weeks + ["Custom (run live)"]
-            pred_week_sel = st.selectbox(
-                "Prediction week",
-                options=week_options,
-                key="pred_week_selector",
-                help="Pre-computed April 2026 weeks load instantly. 'Custom' runs live predictions.",
-            )
-            use_cache = pred_week_sel != "Custom (run live)"
-        else:
-            st.caption("No cache found — configure dates for live predictions")
-            use_cache = False
-            pred_week_sel = None
             col_s, col_e = st.columns(2)
-            with col_s:
-                st.date_input("Start week", key="custom_start", value=pd.Timestamp("2026-04-06"))
-            with col_e:
-                st.date_input("End week", key="custom_end", value=pd.Timestamp("2026-04-27"))
+            start_sel = col_s.selectbox("Start week", options=cached_weeks,
+                                        index=0, key="horizon_start")
+            end_sel   = col_e.selectbox("End week",   options=cached_weeks,
+                                        index=len(cached_weeks) - 1, key="horizon_end")
+            # Weeks in the selected range that exist in the cache
+            selected_weeks = [w for w in cached_weeks if start_sel <= w <= end_sel]
+            use_cache = bool(selected_weeks)
+            if not use_cache:
+                st.caption("Start must be ≤ End week")
+            else:
+                st.caption(f"{len(selected_weeks)} prediction week(s) · {len(selected_weeks) * 13 - (len(selected_weeks) - 1)} forecast dates")
+            st.markdown(
+                "<p style='font-size:0.65rem;color:#6C6A6B;margin:2px 0 0;'>"
+                "For other dates select Custom below</p>",
+                unsafe_allow_html=True,
+            )
+            use_live = st.checkbox("Custom (run live predictions)", key="use_live_cb")
+            if use_live:
+                use_cache = False
+                selected_weeks = []
+        else:
+            st.caption("No cache found — will run live predictions")
+            use_cache = False
+            selected_weeks = []
+            use_live = True
 
         _divider()
 
@@ -255,11 +264,11 @@ def feature_comparison_page() -> None:
 
     # ── Run predictions ───────────────────────────────────────────────────────
     if run_btn:
-        if use_cache and cache_df is not None and pred_week_sel:
+        if use_cache and cache_df is not None and selected_weeks:
             # ── Cache path: load pre-computed results ──────────────────────
             with st.spinner("Loading pre-computed forecast…"):
                 planned_preds, actual_preds, planned_input_df, actual_input_df = (
-                    _load_from_cache(pred_week_sel, cache_df)
+                    _load_from_cache(selected_weeks, cache_df)
                 )
             whatif_preds = None
             st.session_state["planned_preds"] = planned_preds
