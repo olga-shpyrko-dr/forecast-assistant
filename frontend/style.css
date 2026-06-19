@@ -137,8 +137,11 @@ section[data-testid="stSidebar"] button[data-testid="baseButton-primary"]:hover,
 }
 
 /* ── Logo image: no border radius ───────────────────── */
-.st-key-datarobot-logo img {
-    border-radius: 0;
+.st-key-datarobot-logo img,
+.st-key-datarobot-logo .stImage img,
+.st-key-datarobot-logo [data-testid="stImage"] img {
+    border-radius: 0 !important;
+    clip-path: none !important;
 }
 
 /* ── Number input label ──────────────────────────────── */
