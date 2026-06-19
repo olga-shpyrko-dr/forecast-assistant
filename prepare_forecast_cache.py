@@ -41,11 +41,14 @@ from datarobot_predict.deployment import predict
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ROOT      = Path(__file__).parent
-DATA_DIR  = ROOT / "data"
+# Write cache into frontend/data/ so it is included in the deployed app bundle
+DATA_DIR  = ROOT / "frontend" / "data"
 CACHE_FILE = DATA_DIR / "forecast_cache.csv"
 
-PLANNED_FILE = DATA_DIR / "FOR APP TEST WFM DATA PLANNED FEATURES SET TECH_ 31-03-2026_6a326e0a76da3420b0d4e6e2.csv"
-ACTUAL_FILE  = DATA_DIR / "FOR APP TEST WFM DATA ACTUAL FEATURES SET TECH_ 17-06-2026_6a326f4d347b28ea2e55f573.csv"
+# Source data lives at repo root/data/
+_SRC_DATA_DIR = ROOT / "data"
+PLANNED_FILE = _SRC_DATA_DIR / "FOR APP TEST WFM DATA PLANNED FEATURES SET TECH_ 31-03-2026_6a326e0a76da3420b0d4e6e2.csv"
+ACTUAL_FILE  = _SRC_DATA_DIR / "FOR APP TEST WFM DATA ACTUAL FEATURES SET TECH_ 17-06-2026_6a326f4d347b28ea2e55f573.csv"
 
 # ── DR AI Catalog fallback IDs (used when local files are absent) ─────────────
 PLANNED_DATASET_ID = os.environ.get("PLANNED_DATASET_ID", "6a326e0a76da3420b0d4e6e1")

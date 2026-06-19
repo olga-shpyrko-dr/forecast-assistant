@@ -56,9 +56,25 @@ def run_predictions(df: pd.DataFrame) -> list[dict[str, Any]]:
     result = predict(
         deployment=dr.Deployment.get(deployment_id),
         data_frame=_ensure_association_id(df),
-        max_explanations=3,
+        max_explanations=10,
     )
-    return result.dataframe.to_dict(orient="records")  # type: ignore[no-any-return]
+    preds_df = result.dataframe.copy()
+
+    # Compute forecast_step: number of weeks from the last FDW row to each forecast date.
+    # FDW rows are those where the target column is not NaN in the scoring input.
+    target_col = app_settings.target
+    date_col = app_settings.datetime_partition_column
+    if target_col in df.columns and date_col in df.columns:
+        fdw_dates = pd.to_datetime(
+            df[df[target_col].notna()][date_col].astype(str).str[:10],
+            errors="coerce",
+        )
+        if not fdw_dates.empty:
+            fdw_end = fdw_dates.max()
+            pred_dates = pd.to_datetime(preds_df[date_col].astype(str).str[:10], errors="coerce")
+            preds_df["forecast_step"] = ((pred_dates - fdw_end).dt.days / 7).round().astype("Int64")
+
+    return preds_df.to_dict(orient="records")  # type: ignore[no-any-return]
 
 
 # ── Selector helpers ──────────────────────────────────────────────────────────
@@ -177,7 +193,7 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[str] = None) -> pd.D
     preds_df = pd.DataFrame(preds)
     date_col = app_settings.datetime_partition_column
     rows = []
-    for i in range(1, 4):
+    for i in range(1, 11):
         feat_col = f"EXPLANATION_{i}_FEATURE_NAME"
         str_col = f"EXPLANATION_{i}_STRENGTH"
         if feat_col not in preds_df.columns:

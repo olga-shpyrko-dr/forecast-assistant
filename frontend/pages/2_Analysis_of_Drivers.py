@@ -451,13 +451,16 @@ def feature_comparison_page() -> None:
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "delta": st.column_config.ProgressColumn(
+                    "delta": st.column_config.NumberColumn(
                         "delta",
-                        help="Actual minus Planned",
-                        format="%.2f",
-                        min_value=float(diff_df["delta"].min()),
-                        max_value=float(diff_df["delta"].max()),
-                    )
+                        help="Actual minus Planned (negative = actual lower than planned)",
+                        format="%.0f",
+                    ),
+                    "pct_change": st.column_config.NumberColumn(
+                        "pct_change",
+                        help="Percentage change from planned",
+                        format="%.1f%%",
+                    ),
                 },
             )
         else:
