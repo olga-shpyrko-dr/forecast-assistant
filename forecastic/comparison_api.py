@@ -18,6 +18,7 @@ from typing import Any, List, Optional
 import datarobot as dr
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from datarobot_predict.deployment import predict
 
 from forecastic.api import (
@@ -386,12 +387,19 @@ def build_comparison_chart(
     return fig.to_dict()  # type: ignore[no-any-return]
 
 
+_SKILL_SUM_COLOR = "#606060"  # muted gray for SKILL_OFFERED_SUM lag/stat features
+
+
 def build_xemp_color_map(
     planned_preds: list[dict],
     actual_preds: list[dict],
     series_id: Optional[str] = None,
 ) -> dict[str, str]:
-    """Build a stable feature→color mapping from the union of both prediction sets."""
+    """Build a stable feature→color mapping from the union of both prediction sets.
+
+    SKILL_OFFERED_SUM features all share a muted gray; remaining features cycle
+    through BAR_COLORS so they're visually distinct.
+    """
     planned_df = _xemp_bar_df(_filter_preds(planned_preds, series_id))
     actual_df = _xemp_bar_df(_filter_preds(actual_preds, series_id))
     all_features: list[str] = []
@@ -400,7 +408,15 @@ def build_xemp_color_map(
         if feat not in seen:
             all_features.append(feat)
             seen.add(feat)
-    return {feat: BAR_COLORS[i % len(BAR_COLORS)] for i, feat in enumerate(all_features)}
+    color_idx = 0
+    result: dict[str, str] = {}
+    for feat in all_features:
+        if "SKILL_OFFERED_SUM" in feat:
+            result[feat] = _SKILL_SUM_COLOR
+        else:
+            result[feat] = BAR_COLORS[color_idx % len(BAR_COLORS)]
+            color_idx += 1
+    return result
 
 
 def build_xemp_bar(
@@ -458,6 +474,95 @@ def build_xemp_bar(
         margin=dict(l=50, r=20, b=180, t=50, pad=4),
         xaxis=xaxis_kw,
         yaxis=dict(**_AXIS_STYLE, title_text="XEMP Strength"),
+    )
+    return fig.to_dict()  # type: ignore[no-any-return]
+
+
+def build_xemp_combined(
+    planned_preds: list[dict],
+    actual_preds: list[dict],
+    series_id: Optional[str] = None,
+    selected_week: Optional[list[str]] = None,
+    color_map: Optional[dict[str, str]] = None,
+) -> dict[str, Any]:
+    """Two-subplot XEMP figure (Planned | Actual) with a single union legend.
+
+    SKILL_OFFERED_SUM features are grouped at the bottom of the legend and
+    start hidden (visible='legendonly') so the chart opens focused on real
+    driver differences.  Clicking any legend item toggles it in both subplots.
+    """
+    planned_bar_df = _xemp_bar_df(_filter_preds(planned_preds, series_id), selected_week)
+    actual_bar_df  = _xemp_bar_df(_filter_preds(actual_preds,  series_id), selected_week)
+
+    # Union of features: non-SKILL first (by first-appearance order), SKILL last
+    all_feats: list[str] = []
+    seen: set[str] = set()
+    for feat in (
+        list(planned_bar_df["feature"].unique())
+        + list(actual_bar_df["feature"].unique())
+    ):
+        if feat not in seen:
+            all_feats.append(feat)
+            seen.add(feat)
+    ordered = [f for f in all_feats if "SKILL_OFFERED_SUM" not in f] + \
+              [f for f in all_feats if "SKILL_OFFERED_SUM" in f]
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        horizontal_spacing=0.06,
+    )
+
+    for feat in ordered:
+        is_skill = "SKILL_OFFERED_SUM" in feat
+        color = _SKILL_SUM_COLOR if is_skill else (
+            color_map.get(feat, BAR_COLORS[0]) if color_map else BAR_COLORS[0]
+        )
+        visibility: Any = "legendonly" if is_skill else True
+
+        p_data = planned_bar_df[planned_bar_df["feature"] == feat]
+        a_data = actual_bar_df[actual_bar_df["feature"] == feat]
+
+        common = dict(
+            name=feat, marker_color=color, legendgroup=feat,
+            visible=visibility,
+            hovertemplate="<b>%{x}</b><br>%{fullData.name}: %{y:,.1f}<extra></extra>",
+        )
+        fig.add_trace(go.Bar(**common, showlegend=True,  x=p_data["date_id"], y=p_data["strength"]), row=1, col=1)
+        fig.add_trace(go.Bar(**common, showlegend=False, x=a_data["date_id"], y=a_data["strength"]), row=1, col=2)
+
+    xaxis_kw = {
+        **_AXIS_STYLE,
+        "type": "category",
+        "tickangle": -40,
+        "tickfont": dict(family="DM Sans", size=10, color="#A2A2A2"),
+    }
+    fig.update_xaxes(**xaxis_kw)
+    fig.update_yaxes(**_AXIS_STYLE, title_text="XEMP Strength", col=1)
+    fig.update_yaxes(**_AXIS_STYLE, col=2)
+
+    fig.add_annotation(
+        text="PLANNED", xref="paper", yref="paper",
+        x=0.0, y=1.04, xanchor="left", yanchor="bottom", showarrow=False,
+        font=dict(family="Fragment Mono, monospace", size=9, color="#81FBA5"),
+    )
+    fig.add_annotation(
+        text="ACTUAL", xref="paper", yref="paper",
+        x=0.52, y=1.04, xanchor="left", yanchor="bottom", showarrow=False,
+        font=dict(family="Fragment Mono, monospace", size=9, color="#81FBA5"),
+    )
+
+    fig.update_layout(
+        **_LAYOUT_BASE,
+        height=500,
+        barmode="relative",
+        showlegend=True,
+        legend=dict(
+            orientation="h", yanchor="top", y=-0.30, xanchor="left", x=0,
+            font=dict(family="DM Sans", size=11, color="#A2A2A2"),
+            bgcolor="rgba(0,0,0,0)",
+            tracegroupgap=0,
+        ),
+        margin=dict(l=50, r=20, b=200, t=50, pad=4),
     )
     return fig.to_dict()  # type: ignore[no-any-return]
 
