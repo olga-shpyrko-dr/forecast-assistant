@@ -47,6 +47,10 @@ CACHE_FILE = DATA_DIR / "forecast_cache.csv"
 PLANNED_FILE = DATA_DIR / "FOR APP TEST WFM DATA PLANNED FEATURES SET TECH_ 31-03-2026_6a326e0a76da3420b0d4e6e2.csv"
 ACTUAL_FILE  = DATA_DIR / "FOR APP TEST WFM DATA ACTUAL FEATURES SET TECH_ 17-06-2026_6a326f4d347b28ea2e55f573.csv"
 
+# ── DR AI Catalog fallback IDs (used when local files are absent) ─────────────
+PLANNED_DATASET_ID = os.environ.get("PLANNED_DATASET_ID", "6a326e0a76da3420b0d4e6e1")
+ACTUAL_DATASET_ID  = os.environ.get("ACTUAL_DATASET_ID",  "6a326f4d347b28ea2e55f572")
+
 # ── DR settings ───────────────────────────────────────────────────────────────
 DEPLOYMENT_ID    = os.environ.get("FORECAST_DEPLOYMENT_ID", "6a0ec47bf306847615758fa3")
 DR_ENDPOINT      = os.environ.get("DATAROBOT_ENDPOINT",     "https://app.eu.datarobot.com/api/v2/")
@@ -85,9 +89,19 @@ def _init_dr_client() -> None:
 
 
 def _load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load and normalise both source files."""
-    planned = pd.read_csv(PLANNED_FILE, parse_dates=[DATE_COL])
-    actual  = pd.read_csv(ACTUAL_FILE,  parse_dates=[DATE_COL])
+    """Load and normalise both source files. Falls back to DR AI Catalog if local files absent."""
+    if PLANNED_FILE.exists() and ACTUAL_FILE.exists():
+        print(f"  Loading from local files")
+        planned = pd.read_csv(PLANNED_FILE, parse_dates=[DATE_COL])
+        actual  = pd.read_csv(ACTUAL_FILE,  parse_dates=[DATE_COL])
+    else:
+        print(f"  Local files not found — downloading from DR AI Catalog")
+        print(f"    Planned dataset ID: {PLANNED_DATASET_ID}")
+        print(f"    Actual  dataset ID: {ACTUAL_DATASET_ID}")
+        planned = dr.Dataset.get(PLANNED_DATASET_ID).get_as_dataframe()
+        actual  = dr.Dataset.get(ACTUAL_DATASET_ID).get_as_dataframe()
+        planned[DATE_COL] = pd.to_datetime(planned[DATE_COL])
+        actual[DATE_COL]  = pd.to_datetime(actual[DATE_COL])
 
     # Ensure ASSOCIATION_ID exists in both
     for df in (planned, actual):
