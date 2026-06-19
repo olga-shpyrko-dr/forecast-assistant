@@ -775,6 +775,13 @@ _IMMUTABLE_FEATURES: frozenset[str] = frozenset({
     "Holidays", "SpecialDays", "Kerst", "DAY_OF_YEAR", "WEEK_OF_YEAR",
     "MONTH", "YEAR", "Herfst", "Zomer", "Mei", "Voorjaar", "FORECAST_DISTANCE",
 })
+_IMMUTABLE_KEYWORDS: tuple[str, ...] = (
+    "DAY_OF_YEAR", "WEEK_OF_YEAR", "MONTH", "YEAR", "FORECAST_DISTANCE",
+)
+
+
+def _is_immutable(feature: str) -> bool:
+    return feature in _IMMUTABLE_FEATURES or any(kw in feature for kw in _IMMUTABLE_KEYWORDS)
 
 
 def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
@@ -795,7 +802,7 @@ def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
         return pd.DataFrame(columns=["date_id", "feature", "strength"])
     combined = pd.concat(rows, ignore_index=True)
     combined["feature"] = combined["feature"].str.replace(r"\s*\(actual\)\s*$", "", regex=True).str.strip()
-    combined = combined[~combined["feature"].isin(_IMMUTABLE_FEATURES)]
+    combined = combined[~combined["feature"].apply(_is_immutable)]
     return combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
 
 

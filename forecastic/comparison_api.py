@@ -58,6 +58,16 @@ _IMMUTABLE_FEATURES: frozenset[str] = frozenset({
     "FORECAST_DISTANCE",
 })
 
+# Keywords that make a feature immutable regardless of suffix/transformation
+# e.g. "WEEK_OF_YEAR (6 week mean)" should be filtered same as "WEEK_OF_YEAR"
+_IMMUTABLE_KEYWORDS: tuple[str, ...] = (
+    "DAY_OF_YEAR", "WEEK_OF_YEAR", "MONTH", "YEAR", "FORECAST_DISTANCE",
+)
+
+
+def _is_immutable(feature: str) -> bool:
+    return feature in _IMMUTABLE_FEATURES or any(kw in feature for kw in _IMMUTABLE_KEYWORDS)
+
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -228,7 +238,7 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[list[str]] = None) -
         return pd.DataFrame(columns=["date_id", "feature", "strength"])
     combined = pd.concat(rows, ignore_index=True)
     combined["feature"] = combined["feature"].str.replace(r"\s*\(actual\)\s*$", "", regex=True).str.strip()
-    combined = combined[~combined["feature"].isin(_IMMUTABLE_FEATURES)]
+    combined = combined[~combined["feature"].apply(_is_immutable)]
     result = combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
     # Trim ISO timestamps to YYYY-MM-DD for readable axis labels
     result["date_id"] = result["date_id"].astype(str).str[:10]
@@ -750,7 +760,7 @@ def build_input_diff_table(
     skip = {date_col, _SERIES_COL, app_settings.target, f"{app_settings.target} (actual)"}
     numeric_cols = [
         c for c in p.select_dtypes(include="number").columns
-        if c not in skip and c in a.columns and c not in _IMMUTABLE_FEATURES
+        if c not in skip and c in a.columns and not _is_immutable(c)
     ]
 
     if not numeric_cols:
