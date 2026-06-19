@@ -139,7 +139,10 @@ section[data-testid="stSidebar"] button[data-testid="baseButton-primary"]:hover,
 /* ── Logo image: no border radius ───────────────────── */
 .st-key-datarobot-logo img,
 .st-key-datarobot-logo .stImage img,
-.st-key-datarobot-logo [data-testid="stImage"] img {
+.st-key-datarobot-logo [data-testid="stImage"] img,
+.st-key-dr-logo-comparison img,
+.st-key-dr-logo-comparison .stImage img,
+.st-key-dr-logo-comparison [data-testid="stImage"] img {
     border-radius: 0 !important;
     clip-path: none !important;
 }
