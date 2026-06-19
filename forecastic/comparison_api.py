@@ -741,6 +741,67 @@ def build_input_diff_table(
     ).reset_index(drop=True)
 
 
+# ── Feature time-series comparison chart ─────────────────────────────────────
+
+def build_feature_timeseries_chart(
+    planned_df: pd.DataFrame,
+    actual_df: pd.DataFrame,
+    feature: str,
+    series_id: Optional[str] = None,
+    selected_week: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Line chart comparing planned vs actual values of a single feature over time."""
+    date_col = app_settings.datetime_partition_column
+    ms_col = app_settings.multiseries_id_column
+
+    p = _filter_df(planned_df, series_id).copy()
+    a = _filter_df(actual_df,  series_id).copy()
+
+    if selected_week:
+        p = p[p[date_col].isin(selected_week)]
+        a = a[a[date_col].isin(selected_week)]
+
+    p = p[[date_col, feature]].dropna(subset=[feature]).sort_values(date_col)
+    a = a[[date_col, feature]].dropna(subset=[feature]).sort_values(date_col)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=p[date_col], y=p[feature],
+        mode="lines+markers", name="Planned",
+        line=dict(color="#44BFFC", width=1.8, dash="dash"),
+        marker=dict(color="#44BFFC", size=6),
+        hovertemplate="<b>%{x}</b><br>Planned: %{y:,.2f}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=a[date_col], y=a[feature],
+        mode="lines+markers", name="Actual",
+        line=dict(color="#909BF5", width=1.8),
+        marker=dict(color="#909BF5", size=6),
+        hovertemplate="<b>%{x}</b><br>Actual: %{y:,.2f}<extra></extra>",
+    ))
+
+    xaxis_kw = {
+        **_AXIS_STYLE,
+        "type": "category",
+        "tickangle": -35,
+        "tickfont": dict(family="DM Sans", size=10, color="#A2A2A2"),
+    }
+    fig.update_layout(
+        **_LAYOUT_BASE,
+        height=260,
+        showlegend=True,
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+            font=dict(family="DM Sans", size=11, color="#A2A2A2"),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        xaxis=xaxis_kw,
+        yaxis=dict(**_AXIS_STYLE, title_text=feature),
+        margin=dict(l=50, r=20, b=60, t=30, pad=4),
+    )
+    return fig.to_dict()  # type: ignore[no-any-return]
+
+
 # ── LLM comparison summary ────────────────────────────────────────────────────
 
 def get_comparison_llm_summary(

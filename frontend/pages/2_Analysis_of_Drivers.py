@@ -44,6 +44,7 @@ _WEATHER_FILE = _find_data_file("nl_weekly_weather_2026.csv")
 from forecastic.api import LLMNotAvailableException, get_app_settings
 from forecastic.comparison_api import (
     build_comparison_chart,
+    build_feature_timeseries_chart,
     build_input_diff_table,
     build_weather_panel,
     build_xemp_color_map,
@@ -440,16 +441,38 @@ def feature_comparison_page() -> None:
         week_label_str = f"  —  {len(selected_week)} weeks selected{dist_label_str}"
     else:
         week_label_str = f"  —  All weeks{dist_label_str}"
+    diff_df = build_input_diff_table(
+        planned_df_s, actual_df_s,
+        series_id=selected_series,
+        selected_week=selected_week,
+    )
     with st.expander(f"Input feature differences{week_label_str}"):
-        diff_df = build_input_diff_table(
-            planned_df_s, actual_df_s,
-            series_id=selected_series,
-            selected_week=selected_week,
-        )
         if not diff_df.empty:
             st.markdown(_diff_table_html(diff_df), unsafe_allow_html=True)
         else:
             st.write("No comparable numeric feature columns found in both files.")
+
+    # ── Feature time-series chart ─────────────────────────────────────────────
+    features_with_delta = (
+        diff_df[diff_df["abs_delta"] > 0]["feature"].tolist()
+        if not diff_df.empty else []
+    )
+    if features_with_delta:
+        feat_col, _ = st.columns([2, 3])
+        selected_feature = feat_col.selectbox(
+            "Feature detail",
+            options=features_with_delta,
+            index=0,
+            key="feature_detail_select",
+            label_visibility="collapsed",
+        )
+        feat_chart = build_feature_timeseries_chart(
+            planned_df_s, actual_df_s,
+            feature=selected_feature,
+            series_id=selected_series,
+            selected_week=selected_week,
+        )
+        st.plotly_chart(go.Figure(feat_chart), config=CHART_CONFIG, use_container_width=True)
 
     # ── AI Analysis ───────────────────────────────────────────────────────────
     if summary:
