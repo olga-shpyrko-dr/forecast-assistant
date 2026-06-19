@@ -37,16 +37,6 @@ CHART_CONFIG = {"displayModeBar": False, "responsive": True}
 sys.setrecursionlimit(10000)
 app_settings = get_app_settings()
 
-st.set_page_config(
-    page_title="Forecast Comparison",
-    layout="wide",
-    page_icon="./datarobot_favicon.png",
-)
-
-with open("./style.css") as f:
-    css = f.read()
-st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
-
 
 # ── Reusable dataset-input block ──────────────────────────────────────────────
 
@@ -299,9 +289,18 @@ def feature_comparison_page() -> None:
         )
         if not diff_df.empty:
             st.dataframe(
-                diff_df.style.background_gradient(subset=["delta"], cmap="RdYlGn", axis=0),
+                diff_df,
                 use_container_width=True,
                 hide_index=True,
+                column_config={
+                    "delta": st.column_config.ProgressColumn(
+                        "delta",
+                        help="Actual minus Planned",
+                        format="%.2f",
+                        min_value=float(diff_df["delta"].min()),
+                        max_value=float(diff_df["delta"].max()),
+                    )
+                },
             )
         else:
             st.write("No comparable numeric feature columns found in both files.")
