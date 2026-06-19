@@ -195,11 +195,16 @@ def feature_comparison_page() -> None:
             cached_target_weeks = sorted(
                 cache_df["START_OF_WEEK"].astype(str).str[:10].unique().tolist()
             )
+            # Default to Apr–May 2026 (first week ≥ 2026-04-01, last week ≤ 2026-05-31)
+            _default_start = next((w for w in cached_target_weeks if w >= "2026-04-01"), cached_target_weeks[0])
+            _default_end   = next((w for w in reversed(cached_target_weeks) if w <= "2026-05-31"), cached_target_weeks[-1])
             col_s, col_e = st.columns(2)
             start_sel = col_s.selectbox("From", options=cached_target_weeks,
-                                        index=0, key="horizon_start")
+                                        index=cached_target_weeks.index(_default_start),
+                                        key="horizon_start")
             end_sel   = col_e.selectbox("To",   options=cached_target_weeks,
-                                        index=len(cached_target_weeks) - 1, key="horizon_end")
+                                        index=cached_target_weeks.index(_default_end),
+                                        key="horizon_end")
             selected_target_weeks = [w for w in cached_target_weeks if start_sel <= w <= end_sel]
             use_cache = bool(selected_target_weeks)
             if not use_cache:
