@@ -205,7 +205,7 @@ def feature_comparison_page() -> None:
             if not use_cache:
                 st.caption("Start must be ≤ End week")
             else:
-                st.caption(f"{len(selected_weeks)} prediction week(s) · {len(selected_weeks) * 13 - (len(selected_weeks) - 1)} forecast dates")
+                st.caption(f"{len(selected_weeks)} prediction week(s) · {len(selected_weeks) + 12} forecast dates")
             st.markdown(
                 "<p style='font-size:0.65rem;color:#6C6A6B;margin:2px 0 0;'>"
                 "For other dates select Custom below</p>",
@@ -325,7 +325,9 @@ def feature_comparison_page() -> None:
     actual_df_s: pd.DataFrame = st.session_state["actual_df"]
     whatif_preds = st.session_state.get("whatif_preds")
     # Pre-loaded weather — falls back to user-uploaded if file not on disk
-    weather_df_s: pd.DataFrame | None = _read_weather() or st.session_state.get("weather_df")
+    weather_df_s: pd.DataFrame | None = _read_weather()
+    if weather_df_s is None:
+        weather_df_s = st.session_state.get("weather_df")
     available_series: list[str] = st.session_state.get("available_series", [])
     forecast_dates: list[str] = st.session_state.get("forecast_dates", [])
 
@@ -446,31 +448,7 @@ def feature_comparison_page() -> None:
             selected_week=selected_week,
         )
         if not diff_df.empty:
-            st.dataframe(
-                diff_df,
-                use_container_width=True,
-                hide_index=True,
-                column_order=["feature", "planned_avg", "actual_avg", "delta", "abs_delta", "pct_change"],
-                column_config={
-                    "delta": st.column_config.NumberColumn(
-                        "delta",
-                        help="Actual minus Planned (negative = actual lower than planned)",
-                        format="%.0f",
-                    ),
-                    "abs_delta": st.column_config.ProgressColumn(
-                        "magnitude",
-                        help="Absolute size of the change",
-                        format="%.0f",
-                        min_value=0,
-                        max_value=float(diff_df["abs_delta"].max()) if not diff_df.empty else 1,
-                    ),
-                    "pct_change": st.column_config.NumberColumn(
-                        "% change",
-                        help="Percentage change from planned",
-                        format="%.1f%%",
-                    ),
-                },
-            )
+            st.markdown(_diff_table_html(diff_df), unsafe_allow_html=True)
         else:
             st.write("No comparable numeric feature columns found in both files.")
 
@@ -516,6 +494,50 @@ def feature_comparison_page() -> None:
             st.write(summary.weather_connection)
     elif summary is None and "comparison_summaries" in st.session_state:
         st.caption("AI analysis unavailable — LLM deployment not configured.")
+
+
+# ── Diff table HTML renderer ──────────────────────────────────────────────────
+
+def _diff_table_html(diff_df: pd.DataFrame) -> str:
+    """Render the input feature diff table as HTML with sign-colored bars."""
+    max_abs = float(diff_df["abs_delta"].max()) or 1.0
+    _th = (
+        "padding:5px 10px;color:#6C6A6B;"
+        "font-family:'Fragment Mono',monospace;font-size:0.62rem;"
+        "text-transform:uppercase;letter-spacing:0.08em;font-weight:normal;"
+        "border-bottom:1px solid #2a2a2a;"
+    )
+    rows_html = []
+    for _, row in diff_df.iterrows():
+        bar_w = min(row["abs_delta"] / max_abs * 100, 100)
+        color = "#81FBA5" if float(row["delta"]) >= 0 else "#FF4B4B"
+        sign = "+" if float(row["delta"]) > 0 else ""
+        pct_str = f"{row['pct_change']:+.1f}%" if pd.notna(row["pct_change"]) else "—"
+        rows_html.append(
+            f"<tr>"
+            f"<td style='padding:4px 10px;color:#E4E4E4;font-family:DM Sans,sans-serif;font-size:0.82rem;'>{row['feature']}</td>"
+            f"<td style='padding:4px 10px;color:#A2A2A2;text-align:right;font-size:0.82rem;'>{row['planned_avg']:,.0f}</td>"
+            f"<td style='padding:4px 10px;color:#A2A2A2;text-align:right;font-size:0.82rem;'>{row['actual_avg']:,.0f}</td>"
+            f"<td style='padding:4px 10px;color:{color};text-align:right;font-size:0.82rem;font-weight:500;white-space:nowrap;'>{sign}{row['delta']:,.0f}</td>"
+            f"<td style='padding:4px 10px;width:180px;'>"
+            f"  <div style='background:{color};width:{bar_w:.1f}%;height:9px;border-radius:2px;min-width:3px;'></div>"
+            f"</td>"
+            f"<td style='padding:4px 10px;color:{color};text-align:right;font-size:0.82rem;'>{pct_str}</td>"
+            f"</tr>"
+        )
+    return (
+        "<table style='width:100%;border-collapse:collapse;'>"
+        "<thead><tr>"
+        f"<th style='{_th}text-align:left;'>Feature</th>"
+        f"<th style='{_th}text-align:right;'>Planned avg</th>"
+        f"<th style='{_th}text-align:right;'>Actual avg</th>"
+        f"<th style='{_th}text-align:right;'>Delta</th>"
+        f"<th style='{_th}'>Magnitude</th>"
+        f"<th style='{_th}text-align:right;'>% Change</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(rows_html)}</tbody>"
+        "</table>"
+    )
 
 
 # ── Small styling helpers ──────────────────────────────────────────────────────
