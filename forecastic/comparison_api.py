@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, List, Optional
 
 import datarobot as dr
@@ -938,8 +939,8 @@ def get_comparison_llm_summary(
     full_response = _get_completion(prompt, system_prompt=system_prompt, temperature=0)
 
     # Split on the numbered boundary if the model respected it; else use the whole response as "why"
-    parts = full_response.split("\n2.", maxsplit=1)
-    why_body = parts[0].replace("1.", "").strip()
+    parts = re.split(r'\s*\n\s*2\.', full_response, maxsplit=1)
+    why_body = re.sub(r'^\s*1\.', '', parts[0]).strip()
     insights_body = parts[1].strip() if len(parts) > 1 else ""
 
     # Headline
