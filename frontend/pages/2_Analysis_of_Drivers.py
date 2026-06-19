@@ -12,13 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import sys
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.append("..")
+
+# ── Cache file path ───────────────────────────────────────────────────────────
+_HERE = Path(__file__).parent
+_CACHE_FILE = _HERE.parent.parent / "data" / "forecast_cache.csv"
+if not _CACHE_FILE.exists():
+    _CACHE_FILE = Path(os.getcwd()) / "data" / "forecast_cache.csv"
+
+DEFAULT_PREDICTION_WEEKS = ["2026-04-06", "2026-04-13", "2026-04-20", "2026-04-27"]
 
 from forecastic.api import LLMNotAvailableException, get_app_settings
 from forecastic.comparison_api import (
@@ -100,6 +110,36 @@ def _dataset_input(label: str, key_prefix: str, default_catalog_id: str | None =
     return cached
 
 
+# ── Cache helpers ─────────────────────────────────────────────────────────────
+
+@st.cache_data(show_spinner=False)
+def _read_cache() -> pd.DataFrame | None:
+    if not _CACHE_FILE.exists():
+        return None
+    return pd.read_csv(_CACHE_FILE)
+
+
+def _load_from_cache(
+    prediction_week: str, cache_df: pd.DataFrame
+) -> tuple[list[dict], list[dict], pd.DataFrame, pd.DataFrame]:
+    """Return (planned_preds, actual_preds, planned_input_df, actual_input_df) from cache."""
+    w = cache_df[cache_df["prediction_week"] == prediction_week]
+
+    meta_cols = {"prediction_week", "scenario", "forecast_step"}
+    pred_cols = {c for c in cache_df.columns if "PREDICTION" in c.upper() or "PERCENTILE" in c.upper() or "EXPLANATION" in c.upper()}
+    input_feature_cols = [c for c in cache_df.columns if c not in meta_cols and c not in pred_cols]
+
+    planned_recs = (
+        w[w["scenario"] == "planned"].drop(columns=["prediction_week", "scenario", "forecast_step"], errors="ignore").to_dict("records")
+    )
+    actual_recs = (
+        w[w["scenario"] == "actual"].drop(columns=["prediction_week", "scenario", "forecast_step"], errors="ignore").to_dict("records")
+    )
+    planned_input_df = w[w["scenario"] == "planned"][input_feature_cols].copy()
+    actual_input_df  = w[w["scenario"] == "actual"][input_feature_cols].copy()
+    return planned_recs, actual_recs, planned_input_df, actual_input_df
+
+
 # ── Main page ─────────────────────────────────────────────────────────────────
 
 def feature_comparison_page() -> None:
@@ -127,30 +167,61 @@ def feature_comparison_page() -> None:
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
-        _section_label("PLANNED FEATURES", "#81FBA5")
-        planned_df = _dataset_input("Planned Features", "planned", default_catalog_id="6a326e0a76da3420b0d4e6e1")
+        # ── Forecast horizon selector ──────────────────────────────────────
+        _section_label("FORECAST HORIZON", "#81FBA5")
+        cache_df = _read_cache()
+        if cache_df is not None:
+            cached_weeks = sorted(cache_df["prediction_week"].unique().tolist())
+            week_options = cached_weeks + ["Custom (run live)"]
+            pred_week_sel = st.selectbox(
+                "Prediction week",
+                options=week_options,
+                key="pred_week_selector",
+                help="Pre-computed April 2026 weeks load instantly. 'Custom' runs live predictions.",
+            )
+            use_cache = pred_week_sel != "Custom (run live)"
+        else:
+            st.caption("No cache found — configure dates for live predictions")
+            use_cache = False
+            pred_week_sel = None
+            col_s, col_e = st.columns(2)
+            with col_s:
+                st.date_input("Start week", key="custom_start", value=pd.Timestamp("2026-04-06"))
+            with col_e:
+                st.date_input("End week", key="custom_end", value=pd.Timestamp("2026-04-27"))
 
         _divider()
-        _section_label("ACTUAL FEATURES", "#81FBA5")
-        actual_df = _dataset_input("Actual Features", "actual", default_catalog_id="6a326f4d347b28ea2e55f572")
 
-        _divider()
-        _section_label("WHAT-IF SCENARIO  (optional)", "#909BF5")
-        whatif_df = _dataset_input("What-If", "whatif")
+        # ── Dataset upload (only shown for live / custom mode) ─────────────
+        if not use_cache:
+            _section_label("PLANNED FEATURES", "#81FBA5")
+            planned_df = _dataset_input("Planned Features", "planned", default_catalog_id="6a326e0a76da3420b0d4e6e1")
 
-        _divider()
-        _section_label("WEATHER DATA  (optional)", "#44BFFC")
-        weather_file = st.file_uploader(
-            "Upload Netherlands weather CSV",
-            type=["csv"],
-            key="weather_upload",
-            label_visibility="collapsed",
-            help="Expected columns: date, temp_avg_c, precipitation_mm, storm_flag",
-        )
-        if weather_file is not None:
-            st.session_state["weather_df"] = pd.read_csv(weather_file)
-        if st.session_state.get("weather_df") is not None:
-            st.caption(f"{len(st.session_state['weather_df']):,} weather rows loaded")
+            _divider()
+            _section_label("ACTUAL FEATURES", "#81FBA5")
+            actual_df = _dataset_input("Actual Features", "actual", default_catalog_id="6a326f4d347b28ea2e55f572")
+
+            _divider()
+            _section_label("WHAT-IF SCENARIO  (optional)", "#909BF5")
+            whatif_df = _dataset_input("What-If", "whatif")
+
+            _divider()
+            _section_label("WEATHER DATA  (optional)", "#44BFFC")
+            weather_file = st.file_uploader(
+                "Upload Netherlands weather CSV",
+                type=["csv"],
+                key="weather_upload",
+                label_visibility="collapsed",
+                help="Expected columns: date, temp_avg_c, precipitation_mm, storm_flag",
+            )
+            if weather_file is not None:
+                st.session_state["weather_df"] = pd.read_csv(weather_file)
+            if st.session_state.get("weather_df") is not None:
+                st.caption(f"{len(st.session_state['weather_df']):,} weather rows loaded")
+        else:
+            planned_df = None
+            actual_df = None
+            whatif_df = None
 
         _divider()
         n_history = st.number_input(
@@ -163,34 +234,51 @@ def feature_comparison_page() -> None:
 
     # ── Run predictions ───────────────────────────────────────────────────────
     if run_btn:
-        if planned_df is None or actual_df is None:
-            st.warning("Please load both **Planned** and **Actual** feature datasets before running.")
-            st.stop()
-
-        with st.spinner("Running forecasts for both scenarios…"):
-            try:
-                planned_preds = run_predictions(planned_df)
-                actual_preds = run_predictions(actual_df)
-            except Exception as e:
-                st.error(f"Prediction failed: {e}")
+        if use_cache and cache_df is not None and pred_week_sel:
+            # ── Cache path: load pre-computed results ──────────────────────
+            with st.spinner("Loading pre-computed forecast…"):
+                planned_preds, actual_preds, planned_input_df, actual_input_df = (
+                    _load_from_cache(pred_week_sel, cache_df)
+                )
+            whatif_preds = None
+            st.session_state["planned_preds"] = planned_preds
+            st.session_state["actual_preds"] = actual_preds
+            st.session_state["planned_df"] = planned_input_df
+            st.session_state["actual_df"] = actual_input_df
+            st.session_state["whatif_preds"] = whatif_preds
+            st.session_state["available_series"] = get_available_series(planned_input_df, actual_input_df)
+            st.session_state["forecast_dates"] = get_forecast_dates(planned_preds, actual_preds)
+            st.session_state["comparison_summaries"] = {}
+        else:
+            # ── Live path: call DR prediction API ─────────────────────────
+            if planned_df is None or actual_df is None:
+                st.warning("Please load both **Planned** and **Actual** feature datasets before running.")
                 st.stop()
 
-        whatif_preds: list[dict] | None = None
-        if whatif_df is not None:
-            with st.spinner("Running what-if forecast…"):
+            with st.spinner("Running forecasts for both scenarios…"):
                 try:
-                    whatif_preds = run_predictions(whatif_df)
+                    planned_preds = run_predictions(planned_df)
+                    actual_preds = run_predictions(actual_df)
                 except Exception as e:
-                    st.warning(f"What-if prediction failed (skipped): {e}")
+                    st.error(f"Prediction failed: {e}")
+                    st.stop()
 
-        st.session_state["planned_preds"] = planned_preds
-        st.session_state["actual_preds"] = actual_preds
-        st.session_state["planned_df"] = planned_df
-        st.session_state["actual_df"] = actual_df
-        st.session_state["whatif_preds"] = whatif_preds
-        st.session_state["available_series"] = get_available_series(planned_df, actual_df)
-        st.session_state["forecast_dates"] = get_forecast_dates(planned_preds, actual_preds)
-        st.session_state["comparison_summaries"] = {}  # clear cache on new run
+            whatif_preds = None
+            if whatif_df is not None:
+                with st.spinner("Running what-if forecast…"):
+                    try:
+                        whatif_preds = run_predictions(whatif_df)
+                    except Exception as e:
+                        st.warning(f"What-if prediction failed (skipped): {e}")
+
+            st.session_state["planned_preds"] = planned_preds
+            st.session_state["actual_preds"] = actual_preds
+            st.session_state["planned_df"] = planned_df
+            st.session_state["actual_df"] = actual_df
+            st.session_state["whatif_preds"] = whatif_preds
+            st.session_state["available_series"] = get_available_series(planned_df, actual_df)
+            st.session_state["forecast_dates"] = get_forecast_dates(planned_preds, actual_preds)
+            st.session_state["comparison_summaries"] = {}
 
     # ── Guard: nothing loaded yet ─────────────────────────────────────────────
     if "planned_preds" not in st.session_state:
