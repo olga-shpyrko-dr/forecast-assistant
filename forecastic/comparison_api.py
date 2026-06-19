@@ -74,7 +74,7 @@ def get_available_series(planned_df: pd.DataFrame, actual_df: pd.DataFrame) -> l
 
 def get_forecast_dates(planned_preds: list[dict], actual_preds: list[dict]) -> list[str]:
     date_col = app_settings.datetime_partition_column
-    dates = {r[date_col] for r in planned_preds} | {r[date_col] for r in actual_preds}
+    dates = {str(r[date_col])[:10] for r in planned_preds} | {str(r[date_col])[:10] for r in actual_preds}
     return sorted(dates)
 
 
@@ -185,10 +185,9 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[str] = None) -> pd.D
     combined["feature"] = combined["feature"].str.replace(r"\s*\(actual\)\s*$", "", regex=True).str.strip()
     result = combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
     # Trim ISO timestamps to YYYY-MM-DD for readable axis labels
-    result["date_id"] = pd.to_datetime(result["date_id"], utc=True, errors="coerce").dt.strftime("%Y-%m-%d").fillna(result["date_id"])
+    result["date_id"] = result["date_id"].astype(str).str[:10]
     if selected_week:
-        week_short = str(selected_week)[:10]
-        result = result[result["date_id"].str[:10] == week_short]
+        result = result[result["date_id"] == str(selected_week)[:10]]
     return result
 
 
