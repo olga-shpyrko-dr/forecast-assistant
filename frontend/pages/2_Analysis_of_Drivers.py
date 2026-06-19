@@ -30,10 +30,15 @@ if not _CACHE_FILE.exists():
 
 DEFAULT_PREDICTION_WEEKS = ["2026-04-06", "2026-04-13", "2026-04-20", "2026-04-27"]
 
+_WEATHER_FILE = _HERE.parent.parent / "data" / "nl_weekly_weather_2026.csv"
+if not _WEATHER_FILE.exists():
+    _WEATHER_FILE = Path(os.getcwd()) / "data" / "nl_weekly_weather_2026.csv"
+
 from forecastic.api import LLMNotAvailableException, get_app_settings
 from forecastic.comparison_api import (
     build_comparison_chart,
     build_input_diff_table,
+    build_weather_panel,
     build_xemp_bar,
     build_xemp_color_map,
     get_available_series,
@@ -117,6 +122,13 @@ def _read_cache() -> pd.DataFrame | None:
     if not _CACHE_FILE.exists():
         return None
     return pd.read_csv(_CACHE_FILE)
+
+
+@st.cache_data(show_spinner=False)
+def _read_weather() -> pd.DataFrame | None:
+    if not _WEATHER_FILE.exists():
+        return None
+    return pd.read_csv(_WEATHER_FILE)
 
 
 def _load_from_cache(
@@ -293,7 +305,8 @@ def feature_comparison_page() -> None:
     planned_df_s: pd.DataFrame = st.session_state["planned_df"]
     actual_df_s: pd.DataFrame = st.session_state["actual_df"]
     whatif_preds = st.session_state.get("whatif_preds")
-    weather_df_s: pd.DataFrame | None = st.session_state.get("weather_df")
+    # Pre-loaded weather — falls back to user-uploaded if file not on disk
+    weather_df_s: pd.DataFrame | None = _read_weather() or st.session_state.get("weather_df")
     available_series: list[str] = st.session_state.get("available_series", [])
     forecast_dates: list[str] = st.session_state.get("forecast_dates", [])
 
@@ -350,8 +363,14 @@ def feature_comparison_page() -> None:
         series_id=selected_series,
         selected_week=selected_week,
         whatif_preds=whatif_preds,
+        weather_df=weather_df_s,
     )
     st.plotly_chart(go.Figure(chart_json), config=CHART_CONFIG, use_container_width=True)
+
+    # ── Weather panel ─────────────────────────────────────────────────────────
+    if weather_df_s is not None:
+        weather_fig = build_weather_panel(weather_df_s, forecast_dates=forecast_dates)
+        st.plotly_chart(go.Figure(weather_fig), config=CHART_CONFIG, use_container_width=True)
 
     # ── XEMP feature impact side by side ─────────────────────────────────────
     xemp_color_map = build_xemp_color_map(planned_preds, actual_preds, series_id=selected_series)

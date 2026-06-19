@@ -193,6 +193,35 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[str] = None) -> pd.D
 
 # ── Chart builders ────────────────────────────────────────────────────────────
 
+def _aggregate_weather(weather_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate multi-city weather to one row per week_start."""
+    df = weather_df.copy()
+    df["week_start"] = df["week_start"].astype(str).str[:10]
+    agg = (
+        df.groupby("week_start")
+        .agg(
+            temp_avg_c=("temp_avg_c", "mean"),
+            max_gust_kmh=("max_gust_kmh", "max"),
+            precip_mm=("precip_mm", "mean"),
+            adverse_events=("adverse_events", lambda x: "|".join(
+                sorted({v.strip() for v in "|".join(x.dropna()).split("|") if v.strip()})
+            )),
+        )
+        .reset_index()
+    )
+    return agg
+
+
+def _weather_band_color(event: str) -> Optional[str]:
+    if "storm" in event:
+        return "rgba(255,140,0,0.12)"   # amber — storm
+    if "snow" in event:
+        return "rgba(68,191,252,0.10)"  # blue — snow
+    if "heavy_rain" in event:
+        return "rgba(144,155,245,0.10)" # purple — heavy rain
+    return None
+
+
 def build_comparison_chart(
     planned_preds: list[dict],
     actual_preds: list[dict],
@@ -201,6 +230,7 @@ def build_comparison_chart(
     series_id: Optional[str] = None,
     selected_week: Optional[str] = None,
     whatif_preds: Optional[list[dict]] = None,
+    weather_df: Optional[pd.DataFrame] = None,
 ) -> dict[str, Any]:
     """Overlay chart: history baseline + planned forecast (blue dashed) + actual forecast (purple)."""
     target = app_settings.target
@@ -282,6 +312,24 @@ def build_comparison_chart(
         fig.add_vline(
             x=selected_week, line_width=2, line_dash="solid",
             line_color="#FFFF54", opacity=0.55,
+        )
+
+    # Weather event bands
+    if weather_df is not None and not weather_df.empty:
+        w_agg = _aggregate_weather(weather_df)
+        for _, row in w_agg.iterrows():
+            color = _weather_band_color(str(row["adverse_events"]))
+            if color:
+                week_dt = pd.Timestamp(row["week_start"])
+                fig.add_vrect(
+                    x0=str(week_dt), x1=str(week_dt + pd.Timedelta(days=7)),
+                    fillcolor=color, layer="below", line_width=0,
+                )
+        # Weather legend annotations
+        fig.add_annotation(
+            text="▐ storm  ▐ snow  ▐ heavy rain", xref="paper", yref="paper",
+            x=1.0, y=1.04, xanchor="right", yanchor="bottom", showarrow=False,
+            font=dict(family="Fragment Mono, monospace", size=8, color="#6C6A6B"),
         )
 
     fig.update_xaxes(**_AXIS_STYLE, title_text=datetime_col, type="date")
@@ -385,6 +433,116 @@ def build_xemp_bar(
         margin=dict(l=50, r=20, b=180, t=50, pad=4),
         xaxis=xaxis_kw,
         yaxis=dict(**_AXIS_STYLE, title_text="XEMP Strength"),
+    )
+    return fig.to_dict()  # type: ignore[no-any-return]
+
+
+# ── Weather panel ────────────────────────────────────────────────────────────
+
+def build_weather_panel(
+    weather_df: pd.DataFrame,
+    forecast_dates: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """
+    Dual-axis weather chart: max gust bars (color-coded by event) + avg temp line.
+    Filtered to forecast_dates when provided.
+    """
+    w = _aggregate_weather(weather_df)
+
+    if forecast_dates:
+        w = w[w["week_start"].isin([str(d)[:10] for d in forecast_dates])]
+
+    if w.empty:
+        fig = go.Figure()
+        fig.update_layout(**_LAYOUT_BASE, height=200)
+        return fig.to_dict()  # type: ignore[no-any-return]
+
+    EVENT_COLORS = {
+        "storm":      "#FF8C00",  # amber
+        "snow":       "#44BFFC",  # blue
+        "heavy_rain": "#909BF5",  # purple
+        "":           "#2a2a2a",  # dark grey — no event
+    }
+
+    def _bar_color(event: str) -> str:
+        for key in ("storm", "heavy_rain", "snow"):
+            if key in event:
+                return EVENT_COLORS[key]
+        return EVENT_COLORS[""]
+
+    bar_colors = [_bar_color(str(e)) for e in w["adverse_events"]]
+
+    # Hover text
+    hover = [
+        f"<b>{row['week_start']}</b><br>"
+        f"Max gust: {row['max_gust_kmh']:.0f} km/h<br>"
+        f"Precip: {row['precip_mm']:.1f} mm<br>"
+        f"Temp avg: {row['temp_avg_c']:.1f} °C"
+        + (f"<br><b>{row['adverse_events'].upper()}</b>" if row["adverse_events"] else "")
+        for _, row in w.iterrows()
+    ]
+
+    fig = go.Figure()
+
+    # Gust bars (primary axis)
+    fig.add_trace(go.Bar(
+        x=w["week_start"], y=w["max_gust_kmh"],
+        name="Max gust (km/h)",
+        marker_color=bar_colors,
+        hovertext=hover, hoverinfo="text",
+        yaxis="y1",
+    ))
+
+    # Storm threshold line
+    fig.add_hline(
+        y=70, line_dash="dot", line_color="#FF8C00", line_width=1,
+        annotation_text="storm threshold (70 km/h)",
+        annotation_font=dict(family="Fragment Mono, monospace", size=8, color="#FF8C00"),
+        annotation_position="top right",
+    )
+
+    # Temp line (secondary axis)
+    fig.add_trace(go.Scatter(
+        x=w["week_start"], y=w["temp_avg_c"],
+        name="Avg temp (°C)",
+        mode="lines+markers",
+        line=dict(color="#81FBA5", width=1.5),
+        marker=dict(size=5),
+        yaxis="y2",
+    ))
+
+    fig.add_annotation(
+        text="WEATHER — NETHERLANDS", xref="paper", yref="paper",
+        x=0.0, y=1.08, xanchor="left", yanchor="bottom", showarrow=False,
+        font=dict(family="Fragment Mono, monospace", size=9, color="#81FBA5"),
+    )
+
+    xaxis_kw = {**_AXIS_STYLE, "type": "category", "tickangle": -30,
+                "tickfont": dict(family="DM Sans", size=10, color="#A2A2A2")}
+
+    fig.update_layout(
+        **_LAYOUT_BASE,
+        height=280,
+        barmode="overlay",
+        showlegend=True,
+        legend=dict(
+            orientation="h", yanchor="top", y=-0.28,
+            font=dict(family="DM Sans", size=11, color="#A2A2A2"),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        xaxis=xaxis_kw,
+        yaxis=dict(**_AXIS_STYLE, title_text="Max gust (km/h)"),
+        yaxis2=dict(
+            **_AXIS_STYLE,
+            title_text="Avg temp (°C)",
+            overlaying="y", side="right",
+            showgrid=False,
+        ),
+        margin=dict(l=50, r=60, b=80, t=40, pad=4),
+        hoverlabel=dict(
+            bgcolor="#1a1a1a",
+            font=dict(family="DM Sans", size=13, color="#FFFFFF"),
+        ),
     )
     return fig.to_dict()  # type: ignore[no-any-return]
 
