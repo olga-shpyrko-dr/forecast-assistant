@@ -260,8 +260,8 @@ def _aggregate_weather(weather_df: pd.DataFrame) -> pd.DataFrame:
 def _weather_band_color(event: str) -> Optional[str]:
     if "storm" in event:
         return "rgba(255,140,0,0.12)"   # amber — storm
-    if "wind" in event:
-        return "rgba(68,191,252,0.10)"  # blue — wind
+    if "wind" in event or "snow" in event:
+        return "rgba(68,191,252,0.10)"  # blue — wind/snow
     if "heavy_rain" in event:
         return "rgba(144,155,245,0.10)" # purple — heavy rain
     return None
@@ -610,13 +610,14 @@ def build_weather_panel(
 
     EVENT_COLORS = {
         "storm":      "#FF8C00",  # amber
-        "wind":       "#44BFFC",  # blue
+        "wind":       "#44BFFC",  # blue (spring/summer)
+        "snow":       "#44BFFC",  # blue (winter — same shade)
         "heavy_rain": "#909BF5",  # purple
         "":           "#2a2a2a",  # dark grey — no event
     }
 
     def _bar_color(event: str) -> str:
-        for key in ("storm", "heavy_rain", "wind"):
+        for key in ("storm", "heavy_rain", "wind", "snow"):
             if key in event:
                 return EVENT_COLORS[key]
         return EVENT_COLORS[""]
