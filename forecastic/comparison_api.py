@@ -596,13 +596,14 @@ def build_input_diff_table(
 
     result = pd.DataFrame({
         "feature": numeric_cols,
-        "planned_avg": p_means.values.round(3),
-        "actual_avg": a_means.values.round(3),
-        "delta": delta.values.round(3),
+        "planned_avg": p_means.values.round(1),
+        "actual_avg": a_means.values.round(1),
+        "delta": delta.values.round(1),
+        "abs_delta": delta.abs().values.round(1),
         "pct_change": pct.values.round(1),
     })
     return result.reindex(
-        result["delta"].abs().sort_values(ascending=False).index
+        result["abs_delta"].sort_values(ascending=False).index
     ).reset_index(drop=True)
 
 

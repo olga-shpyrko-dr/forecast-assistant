@@ -450,14 +450,22 @@ def feature_comparison_page() -> None:
                 diff_df,
                 use_container_width=True,
                 hide_index=True,
+                column_order=["feature", "planned_avg", "actual_avg", "delta", "abs_delta", "pct_change"],
                 column_config={
                     "delta": st.column_config.NumberColumn(
                         "delta",
                         help="Actual minus Planned (negative = actual lower than planned)",
                         format="%.0f",
                     ),
+                    "abs_delta": st.column_config.ProgressColumn(
+                        "magnitude",
+                        help="Absolute size of the change",
+                        format="%.0f",
+                        min_value=0,
+                        max_value=float(diff_df["abs_delta"].max()) if not diff_df.empty else 1,
+                    ),
                     "pct_change": st.column_config.NumberColumn(
-                        "pct_change",
+                        "% change",
                         help="Percentage change from planned",
                         format="%.1f%%",
                     ),
