@@ -50,12 +50,20 @@ st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 # ── Reusable dataset-input block ──────────────────────────────────────────────
 
-def _dataset_input(label: str, key_prefix: str) -> pd.DataFrame | None:
+def _dataset_input(label: str, key_prefix: str, default_catalog_id: str | None = None) -> pd.DataFrame | None:
     """Render upload / catalog-ID toggle. Returns cached DataFrame or None."""
+    # Pre-initialize session state so st.text_input renders the default correctly
+    catalog_key = f"{key_prefix}_catalog_id"
+    mode_key = f"{key_prefix}_mode"
+    if catalog_key not in st.session_state and default_catalog_id:
+        st.session_state[catalog_key] = default_catalog_id
+    if mode_key not in st.session_state and default_catalog_id:
+        st.session_state[mode_key] = "Load from Catalog"
+
     mode = st.radio(
         f"{label} source",
         options=["Upload CSV", "Load from Catalog"],
-        key=f"{key_prefix}_mode",
+        key=mode_key,
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -73,18 +81,26 @@ def _dataset_input(label: str, key_prefix: str) -> pd.DataFrame | None:
         col_id, col_btn = st.columns([3, 1])
         dataset_id = col_id.text_input(
             "DataRobot Dataset ID",
-            key=f"{key_prefix}_catalog_id",
+            key=catalog_key,
             placeholder="e.g. 66a1b2c3...",
             label_visibility="collapsed",
         )
-        if col_btn.button("Load", key=f"{key_prefix}_load_btn"):
+        # Auto-load on first render if a default ID is provided and not yet loaded
+        auto_load = (
+            default_catalog_id
+            and f"{key_prefix}_df" not in st.session_state
+            and f"{key_prefix}_autoloaded" not in st.session_state
+        )
+        if col_btn.button("Load", key=f"{key_prefix}_load_btn") or auto_load:
             if dataset_id.strip():
                 try:
                     with st.spinner("Loading from Catalog…"):
                         df = load_from_catalog(dataset_id.strip())
                     st.session_state[f"{key_prefix}_df"] = df
+                    st.session_state[f"{key_prefix}_autoloaded"] = True
                     st.success(f"Loaded {len(df):,} rows")
                 except Exception as e:
+                    st.session_state[f"{key_prefix}_autoloaded"] = True  # don't retry on error
                     st.error(f"Failed to load: {e}")
 
     cached = st.session_state.get(f"{key_prefix}_df")
@@ -121,11 +137,11 @@ def feature_comparison_page() -> None:
     # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
         _section_label("PLANNED FEATURES", "#81FBA5")
-        planned_df = _dataset_input("Planned Features", "planned")
+        planned_df = _dataset_input("Planned Features", "planned", default_catalog_id="6a326e0a76da3420b0d4e6e1")
 
         _divider()
         _section_label("ACTUAL FEATURES", "#81FBA5")
-        actual_df = _dataset_input("Actual Features", "actual")
+        actual_df = _dataset_input("Actual Features", "actual", default_catalog_id="6a326f4d347b28ea2e55f572")
 
         _divider()
         _section_label("WHAT-IF SCENARIO  (optional)", "#909BF5")

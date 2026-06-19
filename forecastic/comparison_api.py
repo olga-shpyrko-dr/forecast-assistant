@@ -42,11 +42,20 @@ def load_from_catalog(dataset_id: str) -> pd.DataFrame:
     return dr.Dataset.get(dataset_id).get_as_dataframe()
 
 
+def _ensure_association_id(df: pd.DataFrame) -> pd.DataFrame:
+    if "ASSOCIATION_ID" not in df.columns:
+        skill = df["SKILL"].astype(str) if "SKILL" in df.columns else pd.Series(["ROW"] * len(df), index=df.index)
+        date = df["START_OF_WEEK"].astype(str) if "START_OF_WEEK" in df.columns else pd.Series(range(len(df)), index=df.index).astype(str)
+        df = df.copy()
+        df["ASSOCIATION_ID"] = skill + "_" + date
+    return df
+
+
 def run_predictions(df: pd.DataFrame) -> list[dict[str, Any]]:
     deployment_id = TimeSeriesDeployment().id
     result = predict(
         deployment=dr.Deployment.get(deployment_id),
-        data_frame=df,
+        data_frame=_ensure_association_id(df),
         max_explanations=3,
     )
     return result.dataframe.to_dict(orient="records")  # type: ignore[no-any-return]
