@@ -926,11 +926,13 @@ def _summarize_dataframe(prompt_dataframe: pd.DataFrame, ex_target: bool) -> str
     )
     if ex_target:
         prompt = gettext(
-            "The following are the most important exogenous (non-historical) features "
-            + "driving the weekly call volume forecast for `{target}` at this contact center. "
-            + "These include operational events (e.g. TECH SWAP, MIGRATION, CHURN, NEW CUSTOMER, ADDON, MSTB) "
+            "The following are the TOP 4 most influential exogenous (non-historical) features "
+            + "in the forecast for `{target}` this period — selected by total absolute XEMP strength. "
+            + "The model uses many more features; only the strongest 4 are shown here. "
+            + "Do NOT draw conclusions about features that are absent from this list. "
+            + "These features include operational events (e.g. TECH SWAP, MIGRATION, CHURN, NEW CUSTOMER, ADDON, MSTB) "
             + "and calendar markers (Dutch public holidays, school seasons). "
-            + "Provide a 3–4 sentence plain-language summary: which external drivers are most influential "
+            + "Provide a 3–4 sentence plain-language summary: which of these external drivers are most influential "
             + "this forecast period, and what each likely means for incoming call volume."
         ).format(target=target)
         explain_df = prompt_dataframe[
@@ -938,10 +940,12 @@ def _summarize_dataframe(prompt_dataframe: pd.DataFrame, ex_target: bool) -> str
         ].copy()
     else:
         prompt = gettext(
-            "The following are the most important lagged and trend features "
-            + "driving the weekly call volume forecast for `{target}` at this contact center. "
-            + "These are derived from the historical SKILL_OFFERED_SUM series "
-            + "(lags, rolling means, velocity, acceleration). "
+            "The following are the TOP 4 most influential lagged and trend features "
+            + "in the forecast for `{target}` this period — selected by total absolute XEMP strength. "
+            + "The model uses many more lag and trend features (lags, rolling means, velocity, acceleration); "
+            + "only the strongest 4 are shown here. "
+            + "Do NOT draw conclusions about features that are absent from this list — "
+            + "their absence means they ranked outside the top 4, not that the model ignores them. "
             + "Provide a 3–4 sentence summary of the momentum and trend patterns visible in these features, "
             + "and what the recent trajectory suggests about near-term demand."
         ).format(target=target)
