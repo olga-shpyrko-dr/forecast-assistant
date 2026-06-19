@@ -189,7 +189,7 @@ def _history_from_df(df: pd.DataFrame, n_history: int) -> pd.DataFrame:
     )
 
 
-def _xemp_bar_df(preds: list[dict], selected_week: Optional[str] = None) -> pd.DataFrame:
+def _xemp_bar_df(preds: list[dict], selected_week: Optional[list[str]] = None) -> pd.DataFrame:
     preds_df = pd.DataFrame(preds)
     date_col = app_settings.datetime_partition_column
     rows = []
@@ -210,7 +210,7 @@ def _xemp_bar_df(preds: list[dict], selected_week: Optional[str] = None) -> pd.D
     # Trim ISO timestamps to YYYY-MM-DD for readable axis labels
     result["date_id"] = result["date_id"].astype(str).str[:10]
     if selected_week:
-        result = result[result["date_id"] == str(selected_week)[:10]]
+        result = result[result["date_id"].isin([str(w)[:10] for w in selected_week])]
     return result
 
 
@@ -251,7 +251,7 @@ def build_comparison_chart(
     planned_df: pd.DataFrame,
     n_history: int,
     series_id: Optional[str] = None,
-    selected_week: Optional[str] = None,
+    selected_week: Optional[list[str]] = None,
     whatif_preds: Optional[list[dict]] = None,
     weather_df: Optional[pd.DataFrame] = None,
 ) -> dict[str, Any]:
@@ -330,12 +330,13 @@ def build_comparison_chart(
             line_width=1, line_dash="dash", line_color="#2a2a2a",
         )
 
-    # Selected-week highlight
+    # Selected-week highlights (one vline per selected week)
     if selected_week:
-        fig.add_vline(
-            x=selected_week, line_width=2, line_dash="solid",
-            line_color="#FFFF54", opacity=0.55,
-        )
+        for sw in selected_week:
+            fig.add_vline(
+                x=str(sw)[:10], line_width=2, line_dash="solid",
+                line_color="#FFFF54", opacity=0.55,
+            )
 
     # Weather event bands — only within the forecast window
     if weather_df is not None and not weather_df.empty:
@@ -405,7 +406,7 @@ def build_xemp_color_map(
 def build_xemp_bar(
     preds: list[dict],
     series_id: Optional[str] = None,
-    selected_week: Optional[str] = None,
+    selected_week: Optional[list[str]] = None,
     label: str = "",
     color_map: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
@@ -574,7 +575,7 @@ def build_input_diff_table(
     planned_df: pd.DataFrame,
     actual_df: pd.DataFrame,
     series_id: Optional[str] = None,
-    selected_week: Optional[str] = None,
+    selected_week: Optional[list[str]] = None,
 ) -> pd.DataFrame:
     """Numeric delta between planned and actual input DataFrames, sorted by |delta|."""
     date_col = app_settings.datetime_partition_column
@@ -584,8 +585,8 @@ def build_input_diff_table(
     a = _filter_df(actual_df, series_id).copy()
 
     if selected_week:
-        p = p[p[date_col] == selected_week]
-        a = a[a[date_col] == selected_week]
+        p = p[p[date_col].isin(selected_week)]
+        a = a[a[date_col].isin(selected_week)]
 
     skip = {date_col, ms_col, app_settings.target, f"{app_settings.target} (actual)"}
     numeric_cols = [
@@ -622,7 +623,7 @@ def get_comparison_llm_summary(
     planned_df: pd.DataFrame,
     actual_df: pd.DataFrame,
     series_id: Optional[str] = None,
-    selected_week: Optional[str] = None,
+    selected_week: Optional[list[str]] = None,
     weather_df: Optional[pd.DataFrame] = None,
     whatif_preds: Optional[list[dict]] = None,
 ) -> ComparisonSummary:
@@ -631,13 +632,18 @@ def get_comparison_llm_summary(
     a_fc = _preds_to_fc_df(_filter_preds(actual_preds, series_id))
 
     if selected_week:
-        p_fc = p_fc[p_fc["date_id"] == selected_week]
-        a_fc = a_fc[a_fc["date_id"] == selected_week]
+        p_fc = p_fc[p_fc["date_id"].isin(selected_week)]
+        a_fc = a_fc[a_fc["date_id"].isin(selected_week)]
 
     diff_table = build_input_diff_table(planned_df, actual_df, series_id, selected_week)
     top_diffs = diff_table.head(6)
 
-    scope_label = f" for week {selected_week}" if selected_week else " across the full forecast horizon"
+    if selected_week and len(selected_week) == 1:
+        scope_label = f" for week {selected_week[0]}"
+    elif selected_week:
+        scope_label = f" for weeks {selected_week[0]}–{selected_week[-1]}"
+    else:
+        scope_label = " across the full forecast horizon"
     series_label = f" (series: {series_id})" if series_id else ""
 
     system_prompt = (
@@ -661,14 +667,14 @@ def get_comparison_llm_summary(
         if selected_week:
             date_col_w = next((c for c in w.columns if "date" in c.lower()), None)
             if date_col_w:
-                w = w[w[date_col_w] == selected_week]
+                w = w[w[date_col_w].isin(selected_week)]
         weather_block = f"\n\nWeather context (Netherlands){scope_label}:\n{w.to_string(index=False)}"
 
     whatif_block = ""
     if whatif_preds:
         wi_fc = _preds_to_fc_df(_filter_preds(whatif_preds, series_id))
         if selected_week:
-            wi_fc = wi_fc[wi_fc["date_id"] == selected_week]
+            wi_fc = wi_fc[wi_fc["date_id"].isin(selected_week)]
         whatif_block = (
             f"\n\nScenario C — what-if forecast{scope_label}:\n"
             f"{wi_fc[['date_id', 'prediction']].to_string(index=False)}"

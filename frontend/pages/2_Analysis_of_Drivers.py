@@ -346,14 +346,12 @@ def feature_comparison_page() -> None:
             st.caption("No multiseries ID column found")
 
     with sel_col2:
-        week_options = ["All weeks"] + forecast_dates
-        selected_week_label: str = st.selectbox(
-            "Forecast Week", options=week_options, key="selected_week",
-            help="The future date being forecasted",
+        selected_weeks: list[str] = st.multiselect(
+            "Forecast Week", options=forecast_dates, key="selected_week",
+            placeholder="All weeks",
+            help="Filter to specific forecast target dates (leave empty = show all)",
         )
-        selected_week: str | None = (
-            None if selected_week_label == "All weeks" else selected_week_label
-        )
+        selected_week: list[str] | None = selected_weeks if selected_weeks else None
 
     with sel_col3:
         distances = get_forecast_distances(planned_preds)
@@ -385,7 +383,7 @@ def feature_comparison_page() -> None:
     if "comparison_summaries" not in st.session_state:
         st.session_state["comparison_summaries"] = {}
 
-    summary_key = (selected_series, selected_week, selected_distance)
+    summary_key = (selected_series, tuple(sorted(selected_week)) if selected_week else None, selected_distance)
     if summary_key not in st.session_state["comparison_summaries"]:
         with st.spinner("Generating AI comparison analysis…"):
             try:
@@ -439,8 +437,12 @@ def feature_comparison_page() -> None:
 
     # ── Input feature differences table ──────────────────────────────────────
     dist_label_str = f", distance {selected_distance}w" if selected_distance else ""
-    week_label_str = (f"  —  Week: {selected_week}{dist_label_str}" if selected_week
-                      else f"  —  All weeks{dist_label_str}")
+    if selected_week and len(selected_week) == 1:
+        week_label_str = f"  —  Week: {selected_week[0]}{dist_label_str}"
+    elif selected_week:
+        week_label_str = f"  —  {len(selected_week)} weeks selected{dist_label_str}"
+    else:
+        week_label_str = f"  —  All weeks{dist_label_str}"
     with st.expander(f"Input feature differences{week_label_str}"):
         diff_df = build_input_diff_table(
             planned_df_s, actual_df_s,
