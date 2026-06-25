@@ -38,10 +38,22 @@ def load_accuracy_data(cache_path: Path, actuals_path: Path) -> tuple[pd.DataFra
     return cache_df, actuals_df
 
 
-def get_target_weeks(cache_df: pd.DataFrame) -> list[str]:
-    """Target weeks that have at least 2 distinct forecast distances in the cache."""
+def get_target_weeks(
+    cache_df: pd.DataFrame,
+    actuals_df: pd.DataFrame | None = None,
+) -> list[str]:
+    """Target weeks sorted most-recent-first.
+
+    Only includes weeks with ≥2 distinct forecast distances (needed for a
+    meaningful accuracy curve). If actuals_df is provided, further restricts
+    to weeks that have an observed actual value.
+    """
     counts = cache_df.groupby("START_OF_WEEK")["FORECAST_DISTANCE"].nunique()
-    return sorted(counts[counts >= 2].index.tolist())
+    candidates = set(counts[counts >= 2].index.tolist())
+    if actuals_df is not None and not actuals_df.empty:
+        actual_weeks = set(actuals_df["START_OF_WEEK"].astype(str).str[:10].unique())
+        candidates &= actual_weeks
+    return sorted(candidates, reverse=True)  # most recent first
 
 
 def filter_to_week(cache_df: pd.DataFrame, target_week: str) -> pd.DataFrame:

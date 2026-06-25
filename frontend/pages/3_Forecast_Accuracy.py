@@ -76,7 +76,10 @@ if cache_df is None:
     st.error(f"Forecast cache not found at `{_CACHE_FILE}`. Run the cache preparation notebook first.")
     st.stop()
 
-target_weeks = get_target_weeks(cache_df)
+target_weeks = get_target_weeks(cache_df, actuals_df)
+if not target_weeks:
+    # Fall back to all weeks with ≥2 distances if no actuals overlap
+    target_weeks = get_target_weeks(cache_df)
 if not target_weeks:
     st.warning("No target weeks with multiple forecast distances found in the cache.")
     st.stop()
