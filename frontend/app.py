@@ -234,7 +234,7 @@ pg = st.navigation(
     [
         st.Page(fpa, title="Forecast Key Data", default=True),
         st.Page("pages/2_Analysis_of_Drivers.py", title="Analysis of Drivers"),
-        st.Page("pages/3_Forecast_Accuracy.py", title="Forecast Accuracy"),
+        st.Page("pages/3_Forecast_Accuracy.py", title="Forecast Analysis by FD"),
     ]
 )
 pg.run()
