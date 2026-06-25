@@ -254,3 +254,9 @@ class ComparisonSummary(BaseModel):
     why_forecasts_differ: str
     insights_to_explore: str
     weather_connection: Optional[str] = None
+
+
+class AccuracySummary(BaseModel):
+    headline: str
+    accuracy_narrative: str
+    mitigation_actions: str

@@ -428,6 +428,15 @@ def feature_comparison_page() -> None:
         summary = st.session_state["comparison_summaries"].get(summary_key)
 
     # ── Overlay forecast chart ────────────────────────────────────────────────
+    if selected_distance is not None and planned_preds_v:
+        fp_date = str(planned_preds_v[0].get("prediction_week", ""))[:10]
+        if fp_date:
+            st.caption(
+                f"Forecast point: **{fp_date}** — both lines show predictions made on this date, "
+                f"{selected_distance} week{'s' if selected_distance > 1 else ''} ahead. "
+                "Planned uses expected inputs; Actual uses retrospectively known inputs. "
+                "Predictions differ across distances because each forecast point uses a different historical window."
+            )
     chart_json = build_comparison_chart(
         planned_preds_v, actual_preds_v, planned_df_s,
         n_history=int(n_history),
