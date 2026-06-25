@@ -260,7 +260,7 @@ def build_xemp_by_distance(
         # Sort planned bars by strength ascending (most negative at bottom)
         planned_fs.sort(key=lambda x: x[1])
 
-        # Planned bars
+        # Planned bars — solid fill, full opacity
         for feat, strength in planned_fs:
             color = color_map.get(feat, BAR_COLORS[0])
             show_legend = feat not in planned_legend_added
@@ -273,11 +273,13 @@ def build_xemp_by_distance(
                 name=feat,
                 legendgroup=feat,
                 showlegend=show_legend,
-                marker=dict(color=color),
-                hovertemplate="<b>%{y}</b> — planned<br>Strength: %{x:,.0f}<extra></extra>",
+                marker=dict(color=color, opacity=0.85),
+                hovertemplate="<b>%{y}</b> — planned inputs<br>Strength: %{x:,.0f}<extra></extra>",
             ), row=1, col=col_idx)
 
-        # Actual inputs bars (hatched, same color, grouped alongside planned)
+        # Actual inputs bars — outline only (transparent fill, feature-colour border)
+        # Overlaid on top of planned bars so any delta is immediately visible as the
+        # outline extending beyond (or falling short of) the solid bar.
         if show_actual:
             ai_row_df = actual_week_df[actual_week_df["FORECAST_DISTANCE"].astype(int) == dist]
             if not ai_row_df.empty:
@@ -295,29 +297,29 @@ def build_xemp_by_distance(
                         legendgroup=feat,
                         showlegend=False,
                         marker=dict(
-                            color=color,
-                            opacity=0.45,
-                            pattern=dict(shape="/", fgcolor="rgba(255,255,255,0.25)", size=4),
+                            color="rgba(0,0,0,0)",
+                            line=dict(color=color, width=2),
                         ),
                         hovertemplate="<b>%{y}</b> — actual inputs<br>Strength: %{x:,.0f}<extra></extra>",
                     ), row=1, col=col_idx)
 
-    # Scenario key: two invisible scatter traces as legend anchors
+    # Scenario key
     if show_actual:
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
-            marker=dict(color="#A2A2A2", size=10, symbol="square"),
-            name="▪ Planned inputs", showlegend=True, legendgroup="_scenario_p",
+            marker=dict(color="#A2A2A2", size=12, symbol="square"),
+            name="Planned inputs (solid)", showlegend=True, legendgroup="_scenario_p",
         ))
         fig.add_trace(go.Scatter(
             x=[None], y=[None], mode="markers",
-            marker=dict(color="#A2A2A2", size=10, symbol="square-open"),
-            name="▫ Actual inputs (hatched)", showlegend=True, legendgroup="_scenario_a",
+            marker=dict(color="rgba(0,0,0,0)", size=12, symbol="square",
+                        line=dict(color="#A2A2A2", width=2)),
+            name="Actual inputs (outline)", showlegend=True, legendgroup="_scenario_a",
         ))
 
     fig.update_layout(
         **_LAYOUT_BASE,
-        barmode="group",
+        barmode="overlay",
         height=460,
         legend=dict(
             orientation="v",
