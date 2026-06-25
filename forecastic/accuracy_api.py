@@ -128,14 +128,19 @@ def build_accuracy_line_chart(
 
     fig = go.Figure()
 
+    _label_style = dict(size=10, family="DM Sans", color="#E4E4E4")
+
     # Planned forecast line (blue, solid)
     fig.add_trace(go.Scatter(
         x=x_labels_fc,
         y=y_vals_fc,
-        mode="lines+markers",
+        mode="lines+markers+text",
         name="Forecast — planned inputs",
         line=dict(color=_FORECAST_BLUE, width=2),
         marker=dict(color=_FORECAST_BLUE, size=9),
+        text=[f"{v:,.0f}" for v in y_vals_fc],
+        textposition="top center",
+        textfont=_label_style,
         hovertext=hover_fc,
         hovertemplate="%{hovertext}<extra></extra>",
     ))
@@ -155,10 +160,13 @@ def build_accuracy_line_chart(
             fig.add_trace(go.Scatter(
                 x=ai_x,
                 y=ai_y,
-                mode="lines+markers",
+                mode="lines+markers+text",
                 name="Forecast — actual inputs",
                 line=dict(color=_FORECAST_PURPLE, width=2, dash="dash"),
                 marker=dict(color=_FORECAST_PURPLE, size=9, symbol="circle-open"),
+                text=[f"{v:,.0f}" for v in ai_y],
+                textposition="bottom center",
+                textfont={**_label_style, "color": _FORECAST_PURPLE},
                 hovertext=ai_hover,
                 hovertemplate="%{hovertext}<extra></extra>",
             ))
@@ -168,9 +176,12 @@ def build_accuracy_line_chart(
         fig.add_trace(go.Scatter(
             x=["Actual"],
             y=[actual_value],
-            mode="markers",
+            mode="markers+text",
             name="Actual observed",
             marker=dict(color=_ACTUAL_GREEN, size=14, symbol="diamond"),
+            text=[f"{actual_value:,.0f}"],
+            textposition="top center",
+            textfont={**_label_style, "color": _ACTUAL_GREEN},
             hovertemplate=f"Actual: {actual_value:,.0f}<extra></extra>",
         ))
         fig.add_hline(
