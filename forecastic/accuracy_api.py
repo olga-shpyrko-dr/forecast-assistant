@@ -22,20 +22,25 @@ _PRED_COL = "SKILL_OFFERED_SUM (actual)_PREDICTION"
 _SKILL_GREY = "#606060"
 _ACTUAL_GREEN = "#81FBA5"
 _FORECAST_BLUE = "#44BFFC"
+_FORECAST_PURPLE = "#909BF5"
 
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
 
-def load_accuracy_data(cache_path: Path, actuals_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    cache_df = pd.read_csv(cache_path)
-    cache_df = cache_df[cache_df["scenario"] == "planned"].copy()
-    cache_df["START_OF_WEEK"] = cache_df["START_OF_WEEK"].astype(str).str[:10]
-    cache_df["prediction_week"] = cache_df["prediction_week"].astype(str).str[:10]
-    cache_df["FORECAST_DISTANCE"] = pd.to_numeric(cache_df["FORECAST_DISTANCE"], errors="coerce")
+def load_accuracy_data(
+    cache_path: Path, actuals_path: Path
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Return (planned_df, actual_inputs_df, actuals_df)."""
+    cache_full = pd.read_csv(cache_path)
+    for col in ["START_OF_WEEK", "prediction_week"]:
+        cache_full[col] = cache_full[col].astype(str).str[:10]
+    cache_full["FORECAST_DISTANCE"] = pd.to_numeric(cache_full["FORECAST_DISTANCE"], errors="coerce")
+    planned_df = cache_full[cache_full["scenario"] == "planned"].copy()
+    actual_inputs_df = cache_full[cache_full["scenario"] == "actual"].copy()
     actuals_df = pd.read_csv(actuals_path) if actuals_path.exists() else pd.DataFrame()
     if not actuals_df.empty:
         actuals_df["START_OF_WEEK"] = actuals_df["START_OF_WEEK"].astype(str).str[:10]
-    return cache_df, actuals_df
+    return planned_df, actual_inputs_df, actuals_df
 
 
 def get_target_weeks(
@@ -100,6 +105,7 @@ def build_accuracy_line_chart(
     actual_value: float | None,
     selected_distances: list[int],
     show_all: bool = False,
+    actual_inputs_week_df: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     distances_in_data = sorted(week_df["FORECAST_DISTANCE"].dropna().astype(int).unique(), reverse=True)
     if show_all:
@@ -110,45 +116,60 @@ def build_accuracy_line_chart(
     plot_df = week_df[week_df["FORECAST_DISTANCE"].astype(int).isin(active_distances)].copy()
     plot_df = plot_df.sort_values("FORECAST_DISTANCE", ascending=False)
 
-    x_labels = [f"FD {int(d)}" for d in plot_df["FORECAST_DISTANCE"]]
-    y_vals = plot_df[_PRED_COL].tolist()
-    hover_texts = [
+    x_labels_fc = [f"FD {int(d)}" for d in plot_df["FORECAST_DISTANCE"]]
+    y_vals_fc = plot_df[_PRED_COL].tolist()
+    hover_fc = [
         f"Forecast point: {row['prediction_week']}<br>Prediction: {row[_PRED_COL]:,.0f}"
         for _, row in plot_df.iterrows()
     ]
 
-    if actual_value is not None:
-        x_labels.append("Actual")
-        y_vals.append(actual_value)
-        hover_texts.append(f"Actual: {actual_value:,.0f}")
-
     fig = go.Figure()
 
-    # Forecast line (blue) — everything except the last point if actual exists
-    n_fc = len(x_labels) - (1 if actual_value is not None else 0)
+    # Planned forecast line (blue, solid)
     fig.add_trace(go.Scatter(
-        x=x_labels[:n_fc],
-        y=y_vals[:n_fc],
+        x=x_labels_fc,
+        y=y_vals_fc,
         mode="lines+markers",
-        name="Forecast (planned)",
+        name="Forecast — planned inputs",
         line=dict(color=_FORECAST_BLUE, width=2),
         marker=dict(color=_FORECAST_BLUE, size=9),
-        hovertext=hover_texts[:n_fc],
+        hovertext=hover_fc,
         hovertemplate="%{hovertext}<extra></extra>",
     ))
 
-    # Actual point (green diamond)
+    # Actual inputs forecast line (purple, dashed)
+    if actual_inputs_week_df is not None and not actual_inputs_week_df.empty:
+        ai_plot = actual_inputs_week_df[
+            actual_inputs_week_df["FORECAST_DISTANCE"].astype(int).isin(active_distances)
+        ].sort_values("FORECAST_DISTANCE", ascending=False)
+        if not ai_plot.empty:
+            ai_x = [f"FD {int(d)}" for d in ai_plot["FORECAST_DISTANCE"]]
+            ai_y = ai_plot[_PRED_COL].tolist()
+            ai_hover = [
+                f"Forecast point: {row['prediction_week']}<br>Prediction (actual inputs): {row[_PRED_COL]:,.0f}"
+                for _, row in ai_plot.iterrows()
+            ]
+            fig.add_trace(go.Scatter(
+                x=ai_x,
+                y=ai_y,
+                mode="lines+markers",
+                name="Forecast — actual inputs",
+                line=dict(color=_FORECAST_PURPLE, width=2, dash="dash"),
+                marker=dict(color=_FORECAST_PURPLE, size=9, symbol="circle-open"),
+                hovertext=ai_hover,
+                hovertemplate="%{hovertext}<extra></extra>",
+            ))
+
+    # Actual observed point (green diamond)
     if actual_value is not None:
         fig.add_trace(go.Scatter(
             x=["Actual"],
             y=[actual_value],
             mode="markers",
-            name="Actual",
+            name="Actual observed",
             marker=dict(color=_ACTUAL_GREEN, size=14, symbol="diamond"),
-            hovertext=[hover_texts[-1]],
-            hovertemplate="%{hovertext}<extra></extra>",
+            hovertemplate=f"Actual: {actual_value:,.0f}<extra></extra>",
         ))
-        # Horizontal dashed reference line at actual value
         fig.add_hline(
             y=actual_value,
             line_dash="dash",
@@ -159,7 +180,9 @@ def build_accuracy_line_chart(
             annotation_font_color=_ACTUAL_GREEN,
         )
 
-    axis = {**_AXIS_STYLE, "type": "category"}
+    # Extend x-axis to include "Actual" tick even when actual_value is None
+    all_x = x_labels_fc + (["Actual"] if actual_value is not None else [])
+    axis = {**_AXIS_STYLE, "type": "category", "categoryorder": "array", "categoryarray": all_x}
     fig.update_layout(
         **_LAYOUT_BASE,
         xaxis={**axis, "title": "Forecast Distance (most distant → nearest → Actual)"},
@@ -172,10 +195,25 @@ def build_accuracy_line_chart(
 
 # ── Chart 2: XEMP by distance ─────────────────────────────────────────────────
 
+def _extract_xemp_features(row: pd.Series, df_cols: list[str]) -> list[tuple[str, float]]:
+    """Extract (feature, strength) pairs from one cache row."""
+    result = []
+    for i in range(1, 11):
+        feat_col = f"EXPLANATION_{i}_FEATURE_NAME"
+        str_col = f"EXPLANATION_{i}_STRENGTH"
+        if feat_col not in df_cols or pd.isna(row.get(feat_col)):
+            continue
+        feat = re.sub(r"\s*\(actual\)\s*$", "", str(row[feat_col])).strip()
+        strength = float(row[str_col]) if not pd.isna(row.get(str_col)) else 0.0
+        result.append((feat, strength))
+    return result
+
+
 def build_xemp_by_distance(
     week_df: pd.DataFrame,
     selected_distances: list[int],
     color_map: dict[str, str] | None = None,
+    actual_week_df: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     distances_in_data = sorted(week_df["FORECAST_DISTANCE"].dropna().astype(int).unique(), reverse=True)
     active_distances = [d for d in distances_in_data if d in selected_distances]
@@ -184,6 +222,7 @@ def build_xemp_by_distance(
         fig.update_layout(**_LAYOUT_BASE)
         return fig.to_dict()
 
+    show_actual = actual_week_df is not None and not actual_week_df.empty
     n_cols = len(active_distances)
     subplot_titles = []
     for d in active_distances:
@@ -200,51 +239,83 @@ def build_xemp_by_distance(
         subplot_titles=subplot_titles,
     )
 
+    all_dfs = [week_df] + ([actual_week_df] if show_actual else [])
+    combined = pd.concat(all_dfs, ignore_index=True)
     if color_map is None:
-        color_map = build_accuracy_color_map(week_df)
+        color_map = build_accuracy_color_map(combined)
 
-    legend_added: set[str] = set()
+    planned_legend_added: set[str] = set()
+    df_cols = list(week_df.columns)
+    ai_cols = list(actual_week_df.columns) if show_actual else []
 
     for col_idx, dist in enumerate(active_distances, start=1):
-        row = week_df[week_df["FORECAST_DISTANCE"].astype(int) == dist]
-        if row.empty:
+        p_row_df = week_df[week_df["FORECAST_DISTANCE"].astype(int) == dist]
+        if p_row_df.empty:
             continue
-        row = row.iloc[0]
+        p_row = p_row_df.iloc[0]
+        planned_fs = _extract_xemp_features(p_row, df_cols)
+        # Sort planned bars by strength ascending (most negative at bottom)
+        planned_fs.sort(key=lambda x: x[1])
 
-        # Collect features and sort by strength ascending (negative at bottom)
-        features_strengths: list[tuple[str, float]] = []
-        for i in range(1, 11):
-            feat_col = f"EXPLANATION_{i}_FEATURE_NAME"
-            str_col = f"EXPLANATION_{i}_STRENGTH"
-            if feat_col not in week_df.columns or pd.isna(row.get(feat_col)):
-                continue
-            feat = re.sub(r"\s*\(actual\)\s*$", "", str(row[feat_col])).strip()
-            strength = float(row[str_col]) if not pd.isna(row.get(str_col)) else 0.0
-            features_strengths.append((feat, strength))
-
-        # Sort ascending so the most negative bar is at the bottom
-        features_strengths.sort(key=lambda x: x[1])
-
-        for feat, strength in features_strengths:
+        # Planned bars
+        for feat, strength in planned_fs:
             color = color_map.get(feat, BAR_COLORS[0])
-            show_legend = feat not in legend_added
+            show_legend = feat not in planned_legend_added
             if show_legend:
-                legend_added.add(feat)
+                planned_legend_added.add(feat)
             fig.add_trace(go.Bar(
                 x=[strength],
                 y=[feat],
                 orientation="h",
                 name=feat,
-                marker_color=color,
                 legendgroup=feat,
                 showlegend=show_legend,
-                hovertemplate="<b>%{y}</b><br>Strength: %{x:,.0f}<extra></extra>",
+                marker=dict(color=color),
+                hovertemplate="<b>%{y}</b> — planned<br>Strength: %{x:,.0f}<extra></extra>",
             ), row=1, col=col_idx)
+
+        # Actual inputs bars (hatched, same color, grouped alongside planned)
+        if show_actual:
+            ai_row_df = actual_week_df[actual_week_df["FORECAST_DISTANCE"].astype(int) == dist]
+            if not ai_row_df.empty:
+                ai_row = ai_row_df.iloc[0]
+                ai_fs = _extract_xemp_features(ai_row, ai_cols)
+                ai_dict = dict(ai_fs)
+                for feat, _ in planned_fs:
+                    ai_strength = ai_dict.get(feat, 0.0)
+                    color = color_map.get(feat, BAR_COLORS[0])
+                    fig.add_trace(go.Bar(
+                        x=[ai_strength],
+                        y=[feat],
+                        orientation="h",
+                        name=feat,
+                        legendgroup=feat,
+                        showlegend=False,
+                        marker=dict(
+                            color=color,
+                            opacity=0.45,
+                            pattern=dict(shape="/", fgcolor="rgba(255,255,255,0.25)", size=4),
+                        ),
+                        hovertemplate="<b>%{y}</b> — actual inputs<br>Strength: %{x:,.0f}<extra></extra>",
+                    ), row=1, col=col_idx)
+
+    # Scenario key: two invisible scatter traces as legend anchors
+    if show_actual:
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers",
+            marker=dict(color="#A2A2A2", size=10, symbol="square"),
+            name="▪ Planned inputs", showlegend=True, legendgroup="_scenario_p",
+        ))
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers",
+            marker=dict(color="#A2A2A2", size=10, symbol="square-open"),
+            name="▫ Actual inputs (hatched)", showlegend=True, legendgroup="_scenario_a",
+        ))
 
     fig.update_layout(
         **_LAYOUT_BASE,
-        barmode="relative",
-        height=420,
+        barmode="group",
+        height=460,
         legend=dict(
             orientation="v",
             yanchor="middle",
@@ -253,6 +324,7 @@ def build_xemp_by_distance(
             x=1.01,
             font=dict(size=10, family="DM Sans"),
             bgcolor="rgba(0,0,0,0)",
+            tracegroupgap=4,
         ),
         margin=dict(l=20, r=220, t=50, b=20),
     )

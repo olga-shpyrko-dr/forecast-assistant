@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -48,9 +49,9 @@ app_settings = get_app_settings()
 @st.cache_data(show_spinner=False)
 def _load_data():
     if not _CACHE_FILE.exists():
-        return None, None
-    cache_df, actuals_df = load_accuracy_data(_CACHE_FILE, _ACTUALS_FILE)
-    return cache_df, actuals_df
+        return None, None, None
+    planned_df, actual_inputs_df, actuals_df = load_accuracy_data(_CACHE_FILE, _ACTUALS_FILE)
+    return planned_df, actual_inputs_df, actuals_df
 
 
 # ── Page header ───────────────────────────────────────────────────────────────
@@ -70,11 +71,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-cache_df, actuals_df = _load_data()
+planned_df, actual_inputs_df, actuals_df = _load_data()
 
-if cache_df is None:
+if planned_df is None:
     st.error(f"Forecast cache not found at `{_CACHE_FILE}`. Run the cache preparation notebook first.")
     st.stop()
+
+# Use planned_df as the primary cache for week/distance discovery
+cache_df = planned_df
 
 target_weeks = get_target_weeks(cache_df, actuals_df)
 if not target_weeks:
@@ -88,13 +92,15 @@ all_distances = sorted(cache_df["FORECAST_DISTANCE"].dropna().astype(int).unique
 
 # ── Selectors ─────────────────────────────────────────────────────────────────
 
-col_week, col_series, col_all = st.columns([3, 2, 2])
+col_week, col_series, col_all, col_overlay = st.columns([3, 2, 2, 3])
 with col_week:
     target_week = st.selectbox("Target week", options=target_weeks, index=0)
 with col_series:
     st.selectbox("Series ID", options=["TECH"], index=0, disabled=True)
 with col_all:
     show_all = st.checkbox("Show all distances", value=False)
+with col_overlay:
+    show_actual_inputs = st.checkbox("Show actual inputs overlay", value=False)
 
 default_distances = [d for d in [13, 8, 5, 1] if d in all_distances]
 selected_distances = st.multiselect(
@@ -111,6 +117,11 @@ if show_all:
 
 week_df = filter_to_week(cache_df, target_week)
 actual_value = get_actual_value(actuals_df, target_week) if actuals_df is not None else None
+actual_inputs_week_df = (
+    filter_to_week(actual_inputs_df, target_week)
+    if show_actual_inputs and actual_inputs_df is not None and not actual_inputs_df.empty
+    else None
+)
 
 # Show forecast point date range as context
 available_in_week = sorted(week_df["FORECAST_DISTANCE"].astype(int).unique(), reverse=True)
@@ -138,6 +149,7 @@ chart1 = build_accuracy_line_chart(
     actual_value=actual_value,
     selected_distances=selected_distances,
     show_all=show_all,
+    actual_inputs_week_df=actual_inputs_week_df,
 )
 st.plotly_chart(go.Figure(chart1), config=CHART_CONFIG, use_container_width=True)
 
@@ -153,11 +165,17 @@ if active_xemp:
         "margin:24px 0 4px 0;'>FEATURE DRIVERS BY DISTANCE</p>",
         unsafe_allow_html=True,
     )
-    color_map = build_accuracy_color_map(week_df)
+    combined_for_colors = (
+        pd.concat([week_df, actual_inputs_week_df], ignore_index=True)
+        if actual_inputs_week_df is not None and not actual_inputs_week_df.empty
+        else week_df
+    )
+    color_map = build_accuracy_color_map(combined_for_colors)
     chart2 = build_xemp_by_distance(
         week_df=week_df,
         selected_distances=active_xemp,
         color_map=color_map,
+        actual_week_df=actual_inputs_week_df,
     )
     st.plotly_chart(go.Figure(chart2), config=CHART_CONFIG, use_container_width=True)
 
