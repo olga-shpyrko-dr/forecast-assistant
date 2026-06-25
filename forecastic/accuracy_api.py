@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import functools
 import re
 from pathlib import Path
 from typing import Any, Optional
 
+import datarobot as dr
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -15,8 +17,9 @@ from forecastic.api import (
     _LAYOUT_BASE,
     _get_completion,
     app_settings,
+    time_series_deployment_id,
 )
-from forecastic.schema import AccuracySummary
+from forecastic.schema import AccuracySummary, WhatIfFeature
 
 _PRED_COL = "SKILL_OFFERED_SUM (actual)_PREDICTION"
 _SKILL_GREY = "#606060"
@@ -335,6 +338,40 @@ def build_xemp_by_distance(
     return fig.to_dict()
 
 
+# ── Model metadata ───────────────────────────────────────────────────────────
+
+@functools.lru_cache(maxsize=1)
+def _get_model_context_str() -> str:
+    """Fetch champion model metrics from DR once per session; return formatted prompt text."""
+    lines = [
+        f"Champion model: {app_settings.model_name}",
+        f"Feature derivation window: {app_settings.feature_derivation_window_start} to "
+        f"{app_settings.feature_derivation_window_end} weeks relative to forecast point",
+        f"Forecast horizon: {app_settings.forecast_window_start}–{app_settings.forecast_window_end} weeks ahead",
+    ]
+    try:
+        model = dr.Model.get(app_settings.project_id, app_settings.model_id)
+        metrics = model.metrics or {}
+        for metric_name in ["MASE", "MAE", "RMSE"]:
+            val = metrics.get(metric_name, {}).get("backtesting")
+            if val is not None:
+                lines.append(f"Backtesting {metric_name}: {val:.4f}")
+        # Training period from the deployment's champion
+        try:
+            deployment = dr.Deployment.get(time_series_deployment_id)
+            champ = deployment.model or {}
+            if champ.get("trainingStartDate") and champ.get("trainingEndDate"):
+                lines.append(
+                    f"Champion training period: {champ['trainingStartDate'][:10]} → "
+                    f"{champ['trainingEndDate'][:10]}"
+                )
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return "\n".join(f"- {l}" for l in lines)
+
+
 # ── LLM summary ───────────────────────────────────────────────────────────────
 
 def _build_distance_table(week_df: pd.DataFrame) -> str:
@@ -370,18 +407,32 @@ def get_accuracy_llm_summary(
     week_df: pd.DataFrame,
     actual_value: float | None,
     target_week: str,
-    what_if_features: list[dict],
+    what_if_features: list,
 ) -> AccuracySummary:
-    known_in_advance = ", ".join(f["feature_name"] for f in what_if_features)
+    # Support both WhatIfFeature Pydantic objects and plain dicts
+    def _name(f: Any) -> str:
+        return f.feature_name if hasattr(f, "feature_name") else f["feature_name"]
+
+    def _known(f: Any) -> bool:
+        v = f.known_in_advance if hasattr(f, "known_in_advance") else f.get("known_in_advance")
+        return v is True
+
+    known_features = [_name(f) for f in what_if_features if _known(f)]
+    known_in_advance = ", ".join(known_features) if known_features else "none configured"
+
+    model_context = _get_model_context_str()
 
     system_prompt = (
         "You are a workforce management analyst for a Netherlands-based contact center.\n"
-        "Model context:\n"
+        "Deployed model metadata:\n"
+        f"{model_context}\n"
+        "Forecast context:\n"
         "- Target: SKILL_OFFERED_SUM — total call volume offered to agents per week (TECH skill group).\n"
-        f"- Forecast horizon: {app_settings.forecast_window_start}–{app_settings.forecast_window_end} weeks ahead, weekly granularity.\n"
         "- XEMP strength = feature contribution to the prediction vs baseline. "
         "Positive = pushes forecast up; negative = pushes it down. Larger |strength| = stronger influence.\n"
         f"- Known-in-advance features (operational plans set before the forecast week): {known_in_advance}.\n"
+        "  These are inputs the WFM team controls or can observe before the forecast week arrives. "
+        "  If their XEMP strength is low or absent, the forecast is driven by patterns the team cannot proactively adjust.\n"
         "Be concise and specific — plain language for a business audience. "
         "Never use vague time references like 'periodically' or 'every few weeks'."
     )
