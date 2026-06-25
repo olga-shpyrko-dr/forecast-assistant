@@ -23,7 +23,7 @@ from datarobot_pulumi_utils.schema.custom_models import (
 from datarobot_pulumi_utils.schema.exec_envs import (
     RuntimeEnvironments,
 )
-from datarobot_pulumi_utils.schema.llms import LLMBlueprintArgs, LLMs, PlaygroundArgs
+from datarobot_pulumi_utils.schema.llms import LLMBlueprintArgs, PlaygroundArgs
 
 from forecastic.schema import GenerativeDeploymentSettings, association_id
 
@@ -32,7 +32,9 @@ from .settings_main import (
     project_name,
 )
 
-LLM = LLMs.AZURE_OPENAI_GPT_4_O_MINI
+# LLM calls are routed directly through Azure OpenAI runtime parameters (AZURE_OPENAI_*).
+# No DR generative deployment is needed for this stack.
+LLM = None
 if LLM is not None:
     playground_args = PlaygroundArgs(
         resource_name=f"Forecasting Assistant Playground [{project_name}]",
