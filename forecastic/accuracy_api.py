@@ -372,6 +372,44 @@ def _get_model_context_str() -> str:
     return "\n".join(f"- {l}" for l in lines)
 
 
+@functools.lru_cache(maxsize=1)
+def _get_feature_impact_str() -> str:
+    """Return all features from the champion model's feature impact list.
+
+    Sorted by normalized impact descending. (actual) suffix stripped.
+    Cached once per session — used so the LLM knows which features already exist
+    in the training project and does not suggest adding them.
+    """
+    _clean = lambda n: re.sub(r"\s*\(actual\)\s*$", "", str(n)).strip()
+    try:
+        model = dr.Model.get(app_settings.project_id, app_settings.model_id)
+        impacts = model.get_feature_impact()
+        # impacts is a list of dicts: {featureName, impactNormalized, impactUnnormalized}
+        # Sort by normalized impact descending
+        impacts_sorted = sorted(
+            impacts, key=lambda x: float(x.get("impactNormalized") or 0), reverse=True
+        )
+        entries = [
+            f"{_clean(x['featureName'])} ({float(x['impactNormalized']):.2f})"
+            for x in impacts_sorted
+            if x.get("featureName")
+        ]
+        return f"All {len(entries)} features in training project (name, normalised impact):\n" + ", ".join(entries)
+    except Exception:
+        # Fall back to the important_features from app_settings (already loaded)
+        entries = [
+            f"{_clean(f['featureName'])} ({f['impactNormalized']:.2f})"
+            for f in sorted(
+                app_settings.important_features,
+                key=lambda x: float(x.get("impactNormalized") or 0),
+                reverse=True,
+            )
+            if f.get("featureName")
+        ]
+        note = f"Top {len(entries)} features by impact (full DR feature impact unavailable):\n"
+        return note + ", ".join(entries)
+
+
 # ── LLM summary ───────────────────────────────────────────────────────────────
 
 def _build_distance_table(week_df: pd.DataFrame) -> str:
@@ -421,18 +459,23 @@ def get_accuracy_llm_summary(
     known_in_advance = ", ".join(known_features) if known_features else "none configured"
 
     model_context = _get_model_context_str()
+    feature_list = _get_feature_impact_str()
 
     system_prompt = (
-        "You are a workforce management analyst for a Netherlands-based contact center.\n"
+        "You are a workforce management analyst for a Netherlands-based contact center.\n\n"
         "Deployed model metadata:\n"
-        f"{model_context}\n"
+        f"{model_context}\n\n"
         "Forecast context:\n"
         "- Target: SKILL_OFFERED_SUM — total call volume offered to agents per week (TECH skill group).\n"
         "- XEMP strength = feature contribution to the prediction vs baseline. "
         "Positive = pushes forecast up; negative = pushes it down. Larger |strength| = stronger influence.\n"
         f"- Known-in-advance features (operational plans set before the forecast week): {known_in_advance}.\n"
         "  These are inputs the WFM team controls or can observe before the forecast week arrives. "
-        "  If their XEMP strength is low or absent, the forecast is driven by patterns the team cannot proactively adjust.\n"
+        "  If their XEMP strength is low or absent, the forecast is driven by patterns the team cannot proactively adjust.\n\n"
+        f"{feature_list}\n"
+        "IMPORTANT: Do NOT suggest adding features that already appear in the list above. "
+        "Only recommend adding a genuinely new signal, adjusting how an existing feature is derived "
+        "(e.g. window length, lag depth), or operational process changes.\n\n"
         "Be concise and specific — plain language for a business audience. "
         "Never use vague time references like 'periodically' or 'every few weeks'."
     )
