@@ -102,27 +102,20 @@ with col_overlay:
 
 default_distances = [d for d in [13, 8, 5, 1] if d in all_distances]
 
-col_line, col_xemp = st.columns(2)
-with col_line:
-    show_all = st.checkbox("Show all distances on forecast chart", value=False)
+col_dist, col_all = st.columns([5, 2])
+with col_dist:
     selected_distances = st.multiselect(
         "Forecast chart distances",
         options=all_distances,
         default=default_distances,
         format_func=lambda d: f"FD {d}",
-        disabled=show_all,
         key="line_distances",
     )
-    if show_all:
-        selected_distances = all_distances
-with col_xemp:
-    xemp_selected = st.multiselect(
-        "Feature drivers chart distances",
-        options=all_distances,
-        default=default_distances,
-        format_func=lambda d: f"FD {d}",
-        key="xemp_distances",
-    )
+with col_all:
+    st.write("")  # vertical alignment nudge
+    show_all = st.checkbox("Show all on forecast chart", value=False)
+if show_all:
+    selected_distances = all_distances
 
 # ── Data for selected week ────────────────────────────────────────────────────
 
@@ -166,15 +159,22 @@ st.plotly_chart(go.Figure(chart1), config=CHART_CONFIG, use_container_width=True
 
 # ── Chart 2: XEMP by distance ─────────────────────────────────────────────────
 
+st.markdown(
+    "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
+    "text-transform:uppercase;letter-spacing:0.08em;color:#909BF5;"
+    "margin:24px 0 4px 0;'>FEATURE DRIVERS BY DISTANCE</p>",
+    unsafe_allow_html=True,
+)
+xemp_selected = st.multiselect(
+    "Show distances",
+    options=all_distances,
+    default=default_distances,
+    format_func=lambda d: f"FD {d}",
+    key="xemp_distances",
+)
 active_xemp = [d for d in xemp_selected if d in available_in_week]
 
 if active_xemp:
-    st.markdown(
-        "<p style='font-family:\"Fragment Mono\",monospace;font-size:0.65rem;"
-        "text-transform:uppercase;letter-spacing:0.08em;color:#909BF5;"
-        "margin:24px 0 4px 0;'>FEATURE DRIVERS BY DISTANCE</p>",
-        unsafe_allow_html=True,
-    )
     combined_for_colors = (
         pd.concat([week_df, actual_inputs_week_df], ignore_index=True)
         if actual_inputs_week_df is not None and not actual_inputs_week_df.empty
