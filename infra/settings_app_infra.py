@@ -86,6 +86,7 @@ def get_app_files(
         (str(forecastic_path / "schema.py"), "forecastic/schema.py"),
         (str(forecastic_path / "api.py"), "forecastic/api.py"),
         (str(forecastic_path / "comparison_api.py"), "forecastic/comparison_api.py"),
+        (str(forecastic_path / "accuracy_api.py"), "forecastic/accuracy_api.py"),
         (str(forecastic_path / "resources.py"), "forecastic/resources.py"),
         (str(forecastic_path / "credentials.py"), "forecastic/credentials.py"),
         (str(forecastic_path / "i18n.py"), "forecastic/i18n.py"),
