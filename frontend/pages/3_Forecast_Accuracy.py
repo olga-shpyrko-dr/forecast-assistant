@@ -92,26 +92,37 @@ all_distances = sorted(cache_df["FORECAST_DISTANCE"].dropna().astype(int).unique
 
 # ── Selectors ─────────────────────────────────────────────────────────────────
 
-col_week, col_series, col_all, col_overlay = st.columns([3, 2, 2, 3])
+col_week, col_series, col_overlay = st.columns([3, 2, 3])
 with col_week:
     target_week = st.selectbox("Target week", options=target_weeks, index=0)
 with col_series:
     st.selectbox("Series ID", options=["TECH"], index=0, disabled=True)
-with col_all:
-    show_all = st.checkbox("Show all distances", value=False)
 with col_overlay:
     show_actual_inputs = st.checkbox("Show actual inputs overlay", value=False)
 
 default_distances = [d for d in [13, 8, 5, 1] if d in all_distances]
-selected_distances = st.multiselect(
-    "Show forecast distances",
-    options=all_distances,
-    default=default_distances,
-    format_func=lambda d: f"FD {d}",
-    disabled=show_all,
-)
-if show_all:
-    selected_distances = all_distances
+
+col_line, col_xemp = st.columns(2)
+with col_line:
+    show_all = st.checkbox("Show all distances on forecast chart", value=False)
+    selected_distances = st.multiselect(
+        "Forecast chart distances",
+        options=all_distances,
+        default=default_distances,
+        format_func=lambda d: f"FD {d}",
+        disabled=show_all,
+        key="line_distances",
+    )
+    if show_all:
+        selected_distances = all_distances
+with col_xemp:
+    xemp_selected = st.multiselect(
+        "Feature drivers chart distances",
+        options=all_distances,
+        default=default_distances,
+        format_func=lambda d: f"FD {d}",
+        key="xemp_distances",
+    )
 
 # ── Data for selected week ────────────────────────────────────────────────────
 
@@ -155,8 +166,7 @@ st.plotly_chart(go.Figure(chart1), config=CHART_CONFIG, use_container_width=True
 
 # ── Chart 2: XEMP by distance ─────────────────────────────────────────────────
 
-xemp_distances = selected_distances if not show_all else available_in_week
-active_xemp = [d for d in xemp_distances if d in available_in_week]
+active_xemp = [d for d in xemp_selected if d in available_in_week]
 
 if active_xemp:
     st.markdown(
