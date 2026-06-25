@@ -182,11 +182,16 @@ def build_xemp_by_distance(
         else:
             subplot_titles.append(f"FD {d}")
 
-    fig = make_subplots(rows=1, cols=n_cols, horizontal_spacing=0.06, subplot_titles=subplot_titles)
+    fig = make_subplots(
+        rows=1, cols=n_cols,
+        horizontal_spacing=0.12 if n_cols <= 2 else 0.08,
+        subplot_titles=subplot_titles,
+    )
 
-    legend_added: set[str] = set()
     if color_map is None:
         color_map = build_accuracy_color_map(week_df)
+
+    legend_added: set[str] = set()
 
     for col_idx, dist in enumerate(active_distances, start=1):
         row = week_df[week_df["FORECAST_DISTANCE"].astype(int) == dist]
@@ -194,6 +199,8 @@ def build_xemp_by_distance(
             continue
         row = row.iloc[0]
 
+        # Collect features and sort by strength ascending (negative at bottom)
+        features_strengths: list[tuple[str, float]] = []
         for i in range(1, 11):
             feat_col = f"EXPLANATION_{i}_FEATURE_NAME"
             str_col = f"EXPLANATION_{i}_STRENGTH"
@@ -201,32 +208,45 @@ def build_xemp_by_distance(
                 continue
             feat = re.sub(r"\s*\(actual\)\s*$", "", str(row[feat_col])).strip()
             strength = float(row[str_col]) if not pd.isna(row.get(str_col)) else 0.0
+            features_strengths.append((feat, strength))
+
+        # Sort ascending so the most negative bar is at the bottom
+        features_strengths.sort(key=lambda x: x[1])
+
+        for feat, strength in features_strengths:
             color = color_map.get(feat, BAR_COLORS[0])
             show_legend = feat not in legend_added
             if show_legend:
                 legend_added.add(feat)
-            is_skill = "SKILL_OFFERED_SUM" in feat
             fig.add_trace(go.Bar(
-                x=[feat],
-                y=[strength],
+                x=[strength],
+                y=[feat],
+                orientation="h",
                 name=feat,
                 marker_color=color,
                 legendgroup=feat,
                 showlegend=show_legend,
-                visible="legendonly" if is_skill else True,
-                hovertemplate=f"<b>{feat}</b><br>Strength: {strength:,.1f}<extra></extra>",
+                hovertemplate="<b>%{y}</b><br>Strength: %{x:,.0f}<extra></extra>",
             ), row=1, col=col_idx)
 
     fig.update_layout(
         **_LAYOUT_BASE,
         barmode="relative",
-        legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="left", x=0),
-        margin=dict(l=60, r=20, t=60, b=120),
+        height=420,
+        legend=dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.01,
+            font=dict(size=10, family="DM Sans"),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        margin=dict(l=20, r=220, t=50, b=20),
     )
     for i in range(1, n_cols + 1):
-        fig.update_xaxes(tickangle=-40, **_AXIS_STYLE, row=1, col=i)
+        fig.update_xaxes(**_AXIS_STYLE, title_text="XEMP Strength" if i == 1 else "", row=1, col=i)
         fig.update_yaxes(**_AXIS_STYLE, row=1, col=i)
-    fig.update_yaxes(title_text="XEMP Strength", row=1, col=1)
 
     return fig.to_dict()
 
