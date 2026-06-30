@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, List, Optional
 
 import datarobot as dr
@@ -29,6 +30,7 @@ from forecastic.api import (
     _LAYOUT_BASE,
     _get_completion,
     app_settings,
+    get_scoring_dataset_versions,
 )
 from forecastic.resources import TimeSeriesDeployment
 from forecastic.schema import ComparisonSummary
@@ -112,6 +114,104 @@ def run_predictions(df: pd.DataFrame) -> list[dict[str, Any]]:
             preds_df["forecast_step"] = ((pred_dates - fdw_end).dt.days / 7).round().astype("Int64")
 
     return preds_df.to_dict(orient="records")  # type: ignore[no-any-return]
+
+
+# ── New-data detection and cache append ──────────────────────────────────────
+
+def check_for_new_data(cache_df: pd.DataFrame) -> Optional[dict]:
+    """Return the latest DR scoring dataset version if it post-dates the cache, else None.
+
+    Compares the version's creation date against the maximum prediction_week already in the
+    cache CSV.  Swallows API exceptions so a network hiccup does not break page rendering.
+    """
+    try:
+        versions = get_scoring_dataset_versions()
+    except Exception:
+        return None
+    if not versions:
+        return None
+    latest = versions[0]
+    created = latest.get("created_at", "")[:10]
+    if not created:
+        return None
+    cache_max = pd.to_datetime(cache_df["prediction_week"]).max()
+    if pd.to_datetime(created) > cache_max + pd.Timedelta(days=1):
+        return latest
+    return None
+
+
+def append_scoring_week_to_cache(
+    scoring_df: pd.DataFrame,
+    cache_path: Path,
+) -> str:
+    """Build a planned-scenario cache entry for the newest prediction week and append it.
+
+    Uses the scoring dataset directly: historical rows (non-NaN target) form the FDW and
+    future rows (NaN target) form the FW.  Only the planned scenario is written because
+    actual inputs for the current week are not yet known.
+
+    Returns the prediction_week string that was appended (YYYY-MM-DD).
+    """
+    target_col = app_settings.target
+    date_col = app_settings.datetime_partition_column
+
+    scoring_df = scoring_df.copy()
+    scoring_df[date_col] = scoring_df[date_col].astype(str).str[:10]
+
+    # FDW end = latest date that has a real observed target value
+    fdw_dates = pd.to_datetime(
+        scoring_df.loc[scoring_df[target_col].notna(), date_col], errors="coerce"
+    ).dropna()
+    if fdw_dates.empty:
+        raise ValueError("No historical rows (non-NaN target) found in the scoring dataset.")
+    prediction_week = fdw_dates.max().strftime("%Y-%m-%d")
+
+    # Idempotency: skip if this week+scenario is already cached
+    cache_path = Path(cache_path)
+    if cache_path.exists():
+        existing = pd.read_csv(cache_path)
+        already = existing[
+            (existing["prediction_week"] == prediction_week) & (existing["scenario"] == "planned")
+        ]
+        if not already.empty:
+            return prediction_week
+
+    # Run predictions (full scoring_df — FDW history + FW feature rows)
+    preds = run_predictions(scoring_df)
+    preds_df = pd.DataFrame(preds)
+    preds_df[date_col] = preds_df[date_col].astype(str).str[:10]
+
+    # Compute forecast_step for FW rows and carry their input features
+    fw_rows = scoring_df[scoring_df[target_col].isna()].copy()
+    pred_dt = pd.Timestamp(prediction_week)
+    fw_dates_dt = pd.to_datetime(fw_rows[date_col], errors="coerce")
+    fw_rows["forecast_step"] = ((fw_dates_dt - pred_dt).dt.days / 7).round().astype(int)
+
+    extra_cols = [
+        c for c in fw_rows.columns
+        if c not in preds_df.columns and c not in {target_col, "ASSOCIATION_ID"}
+    ]
+    merged = preds_df.merge(
+        fw_rows[[date_col, "forecast_step"] + extra_cols],
+        on=date_col,
+        how="left",
+    )
+    merged.insert(0, "scenario", "planned")
+    merged.insert(0, "prediction_week", prediction_week)
+
+    # Append to existing cache (replace any stale rows for the same week+scenario)
+    if cache_path.exists():
+        existing = pd.read_csv(cache_path)
+        existing = existing[
+            ~((existing["prediction_week"] == prediction_week) & (existing["scenario"] == "planned"))
+        ]
+        result = pd.concat([existing, merged], ignore_index=True)
+    else:
+        result = merged
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(cache_path, index=False)
+    return prediction_week
 
 
 # ── Selector helpers ──────────────────────────────────────────────────────────

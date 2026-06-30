@@ -42,14 +42,16 @@ _CACHE_FILE   = _find_data_file("forecast_cache.csv")
 _WEATHER_FILE = _find_data_file("nl_weekly_weather_2026.csv")
 _ACTUALS_FILE = _find_data_file("actuals_lookup.csv")
 
-from forecastic.api import LLMNotAvailableException, get_app_settings
+from forecastic.api import LLMNotAvailableException, get_app_settings, scoring_dataset_id
 from forecastic.comparison_api import (
+    append_scoring_week_to_cache,
     build_comparison_chart,
     build_feature_timeseries_chart,
     build_input_diff_table,
     build_weather_panel,
     build_xemp_color_map,
     build_xemp_combined,
+    check_for_new_data,
     get_available_series,
     get_comparison_llm_summary,
     get_forecast_dates,
@@ -148,6 +150,16 @@ def _read_actuals() -> pd.DataFrame | None:
     return pd.read_csv(_ACTUALS_FILE)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_scoring_versions() -> list[dict]:
+    """Fetch DR scoring dataset versions, cached for 5 minutes."""
+    try:
+        from forecastic.api import get_scoring_dataset_versions
+        return get_scoring_dataset_versions()
+    except Exception:
+        return []
+
+
 def _load_from_cache(
     target_weeks: list[str], cache_df: pd.DataFrame
 ) -> tuple[list[dict], list[dict], pd.DataFrame, pd.DataFrame]:
@@ -225,6 +237,23 @@ def feature_comparison_page() -> None:
                 "For dates outside the cache select Custom below</p>",
                 unsafe_allow_html=True,
             )
+
+            # ── New-data detection ─────────────────────────────────────────
+            _new_ver = check_for_new_data(cache_df)
+            if _new_ver:
+                _ver_label = _new_ver.get("label", _new_ver.get("created_at", "")[:10])
+                st.info(f"New scoring data available ({_ver_label})", icon="🔔")
+                if st.button("Load new week", key="load_new_week_btn", use_container_width=True):
+                    with st.spinner("Generating forecasts for new week…"):
+                        try:
+                            _new_df = load_from_catalog(scoring_dataset_id)
+                            _pred_week = append_scoring_week_to_cache(_new_df, _CACHE_FILE)
+                            st.cache_data.clear()
+                            st.success(f"Loaded forecast for week {_pred_week}")
+                            st.rerun()
+                        except Exception as _e:
+                            st.error(f"Failed to load new week: {_e}")
+
             use_live = st.checkbox("Custom (run live predictions)", key="use_live_cb")
             if use_live:
                 use_cache = False

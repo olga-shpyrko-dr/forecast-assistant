@@ -38,7 +38,8 @@ from forecastic.accuracy_api import (
     get_target_weeks,
     load_accuracy_data,
 )
-from forecastic.api import LLMNotAvailableException, get_app_settings
+from forecastic.api import LLMNotAvailableException, get_app_settings, scoring_dataset_id
+from forecastic.comparison_api import append_scoring_week_to_cache, check_for_new_data, load_from_catalog
 
 CHART_CONFIG = {"displayModeBar": False, "responsive": True}
 
@@ -52,6 +53,16 @@ def _load_data():
         return None, None, None
     planned_df, actual_inputs_df, actuals_df = load_accuracy_data(_CACHE_FILE, _ACTUALS_FILE)
     return planned_df, actual_inputs_df, actuals_df
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_scoring_versions() -> list[dict]:
+    """Fetch DR scoring dataset versions, cached for 5 minutes."""
+    try:
+        from forecastic.api import get_scoring_dataset_versions
+        return get_scoring_dataset_versions()
+    except Exception:
+        return []
 
 
 # ── Page header ───────────────────────────────────────────────────────────────
@@ -79,6 +90,23 @@ if planned_df is None:
 
 # Use planned_df as the primary cache for week/distance discovery
 cache_df = planned_df
+
+# ── New-data detection ────────────────────────────────────────────────────────
+_new_ver = check_for_new_data(cache_df)
+if _new_ver:
+    _ver_label = _new_ver.get("label", _new_ver.get("created_at", "")[:10])
+    col_info, col_btn = st.columns([5, 2])
+    col_info.info(f"New scoring data available ({_ver_label})", icon="🔔")
+    if col_btn.button("Load new week", use_container_width=True):
+        with st.spinner("Generating forecasts for new week…"):
+            try:
+                _new_df = load_from_catalog(scoring_dataset_id)
+                _pred_week = append_scoring_week_to_cache(_new_df, _CACHE_FILE)
+                st.cache_data.clear()
+                st.success(f"Loaded forecast for week {_pred_week}")
+                st.rerun()
+            except Exception as _e:
+                st.error(f"Failed to load new week: {_e}")
 
 target_weeks = get_target_weeks(cache_df, actuals_df)
 if not target_weeks:
