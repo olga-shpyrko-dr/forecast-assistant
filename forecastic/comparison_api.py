@@ -123,17 +123,30 @@ def get_missing_weeks(cache_df: pd.DataFrame, scoring_df: pd.DataFrame) -> list[
 
     Available weeks = all dates with a non-NaN target in the scoring dataset (i.e. weeks
     for which we have real observed history that could serve as the FDW end).
-    Missing weeks = available - already cached, returned in ascending date order.
+    Missing weeks = available - already cached, filtered to only weeks with enough FDW
+    history in the scoring dataset (≥ |fdw_start_wks| rows), returned ascending.
     """
     target_col = app_settings.target
     date_col = app_settings.datetime_partition_column
+    fdw_start_wks = app_settings.feature_derivation_window_start  # e.g. -6
+    min_fdw_rows = abs(fdw_start_wks)
 
     df = scoring_df.copy()
     df[date_col] = df[date_col].astype(str).str[:10]
 
     available = set(df.loc[df[target_col].notna(), date_col].unique())
     cached = set(cache_df["prediction_week"].astype(str).str[:10].unique())
-    return sorted(available - cached)
+    candidates = sorted(available - cached)
+
+    valid = []
+    for week in candidates:
+        fdw_start = (pd.Timestamp(week) + pd.Timedelta(weeks=fdw_start_wks)).strftime("%Y-%m-%d")
+        fdw_count = df[
+            (df[date_col] >= fdw_start) & (df[date_col] <= week) & df[target_col].notna()
+        ].shape[0]
+        if fdw_count >= min_fdw_rows:
+            valid.append(week)
+    return valid
 
 
 def _build_scoring_input_for_week(
