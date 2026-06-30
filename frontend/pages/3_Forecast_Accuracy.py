@@ -112,6 +112,19 @@ if _scoring_df is not None:
                 except Exception as _e:
                     st.error(f"Failed: {_e}")
 
+if _scoring_df is not None:
+    with st.expander("↻ Refresh a specific week with latest data"):
+        _cached_weeks = sorted(cache_df["prediction_week"].astype(str).str[:10].unique(), reverse=True)
+        _refresh_week = st.selectbox("Prediction week to refresh", options=_cached_weeks, key="refresh_week_p3")
+        if st.button("Force refresh", key="force_refresh_btn_p3", use_container_width=True):
+            with st.spinner(f"Re-running predictions for {_refresh_week}…"):
+                try:
+                    append_scoring_week_to_cache(_scoring_df, _CACHE_FILE, _refresh_week, force=True)
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"Failed: {_e}")
+
 target_weeks = get_target_weeks(cache_df, actuals_df)
 if not target_weeks:
     # Fall back to all weeks with ≥2 distances if no actuals overlap

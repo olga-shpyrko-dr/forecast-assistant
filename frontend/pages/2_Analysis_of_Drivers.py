@@ -262,6 +262,25 @@ def feature_comparison_page() -> None:
                             except Exception as _e:
                                 st.error(f"Failed: {_e}")
 
+            if _scoring_df is not None:
+                with st.expander("↻ Refresh a specific week"):
+                    _cached_pred_weeks = sorted(
+                        cache_df["prediction_week"].astype(str).str[:10].unique(), reverse=True
+                    )
+                    _refresh_week = st.selectbox(
+                        "Prediction week", options=_cached_pred_weeks, key="refresh_week_p2"
+                    )
+                    if st.button("Force refresh", key="force_refresh_btn_p2", use_container_width=True):
+                        with st.spinner(f"Re-running predictions for {_refresh_week}…"):
+                            try:
+                                append_scoring_week_to_cache(
+                                    _scoring_df, _CACHE_FILE, _refresh_week, force=True
+                                )
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as _e:
+                                st.error(f"Failed: {_e}")
+
             use_live = st.checkbox("Custom (run live predictions)", key="use_live_cb")
             if use_live:
                 use_cache = False

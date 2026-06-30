@@ -168,11 +168,13 @@ def append_scoring_week_to_cache(
     scoring_df: pd.DataFrame,
     cache_path: Path,
     prediction_week: str,
+    force: bool = False,
 ) -> None:
     """Build a planned-scenario cache entry for prediction_week and append to the cache CSV.
 
     Only the planned scenario is written (actual inputs are not yet known for new weeks).
-    Idempotent: skips silently if this week+scenario is already present in the cache.
+    Idempotent: skips silently if this week+scenario is already present in the cache,
+    unless force=True, which overwrites the existing entry with the latest scoring data.
     """
     target_col = app_settings.target
     date_col = app_settings.datetime_partition_column
@@ -181,7 +183,7 @@ def append_scoring_week_to_cache(
     scoring_df[date_col] = scoring_df[date_col].astype(str).str[:10]
 
     cache_path = Path(cache_path)
-    if cache_path.exists():
+    if not force and cache_path.exists():
         existing = pd.read_csv(cache_path)
         already = existing[
             (existing["prediction_week"] == prediction_week) & (existing["scenario"] == "planned")
