@@ -58,6 +58,7 @@ from forecastic.comparison_api import (
     get_missing_weeks,
     load_from_catalog,
     run_predictions,
+    update_actuals_from_scoring,
 )
 
 CHART_CONFIG = {"displayModeBar": False, "responsive": True}
@@ -241,6 +242,7 @@ def feature_comparison_page() -> None:
             # ── New-data detection ─────────────────────────────────────────
             _scoring_df = _get_latest_scoring_df()
             if _scoring_df is not None:
+                update_actuals_from_scoring(_scoring_df, _CACHE_FILE)
                 _missing = get_missing_weeks(cache_df, _scoring_df)
                 if _missing:
                     st.info(

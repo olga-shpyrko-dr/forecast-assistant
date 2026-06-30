@@ -39,7 +39,7 @@ from forecastic.accuracy_api import (
     load_accuracy_data,
 )
 from forecastic.api import LLMNotAvailableException, get_app_settings, scoring_dataset_id
-from forecastic.comparison_api import append_scoring_week_to_cache, get_missing_weeks
+from forecastic.comparison_api import append_scoring_week_to_cache, get_missing_weeks, update_actuals_from_scoring
 
 CHART_CONFIG = {"displayModeBar": False, "responsive": True}
 
@@ -94,6 +94,7 @@ cache_df = planned_df
 # ── New-data detection ────────────────────────────────────────────────────────
 _scoring_df = _get_latest_scoring_df()
 if _scoring_df is not None:
+    update_actuals_from_scoring(_scoring_df, _CACHE_FILE)
     _missing = get_missing_weeks(cache_df, _scoring_df)
     if _missing:
         col_info, col_btn = st.columns([5, 2])
