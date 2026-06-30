@@ -177,6 +177,39 @@ def _build_scoring_input_for_week(
     return window
 
 
+def _update_actuals_from_scoring(scoring_df: pd.DataFrame, cache_path: Path) -> None:
+    """Upsert actual values from the scoring dataset into actuals_lookup.csv.
+
+    Reads all rows with a non-NaN target, groups by date, and merges into the
+    existing actuals file (or creates it). Called automatically by
+    append_scoring_week_to_cache so actuals stay current with each cache update.
+    """
+    target_col = app_settings.target
+    date_col = app_settings.datetime_partition_column
+    actuals_path = Path(cache_path).parent / "actuals_lookup.csv"
+
+    df = scoring_df.copy()
+    df[date_col] = df[date_col].astype(str).str[:10]
+
+    new_actuals = (
+        df[df[target_col].notna()]
+        .groupby(date_col, as_index=False)[target_col]
+        .sum()
+        .rename(columns={date_col: "START_OF_WEEK", target_col: "SKILL_OFFERED_SUM"})
+    )
+
+    if actuals_path.exists():
+        existing = pd.read_csv(actuals_path)
+        existing["START_OF_WEEK"] = existing["START_OF_WEEK"].astype(str).str[:10]
+        existing = existing[~existing["START_OF_WEEK"].isin(new_actuals["START_OF_WEEK"])]
+        combined = pd.concat([existing, new_actuals], ignore_index=True)
+    else:
+        combined = new_actuals
+
+    actuals_path.parent.mkdir(parents=True, exist_ok=True)
+    combined.sort_values("START_OF_WEEK").to_csv(actuals_path, index=False)
+
+
 def append_scoring_week_to_cache(
     scoring_df: pd.DataFrame,
     cache_path: Path,
@@ -240,6 +273,7 @@ def append_scoring_week_to_cache(
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(cache_path, index=False)
+    _update_actuals_from_scoring(scoring_df, cache_path)
 
 
 # ── Selector helpers ──────────────────────────────────────────────────────────
