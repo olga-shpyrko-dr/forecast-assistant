@@ -223,11 +223,14 @@ def append_scoring_week_to_cache(
     prediction_week: str,
     force: bool = False,
 ) -> None:
-    """Build a planned-scenario cache entry for prediction_week and append to the cache CSV.
+    """Build planned + actual cache entries for prediction_week and append to the cache CSV.
 
-    Only the planned scenario is written (actual inputs are not yet known for new weeks).
-    Idempotent: skips silently if this week+scenario is already present in the cache,
-    unless force=True, which overwrites the existing entry with the latest scoring data.
+    Both scenarios are written from the same scoring dataset. For recently-loaded
+    weeks the feature values will be identical (actual features available for past
+    FW weeks, planned for future ones), but both rows are written so the
+    'actual inputs' overlay appears on the accuracy chart.
+
+    Idempotent: skips if 'planned' already exists, unless force=True.
     """
     target_col = app_settings.target
     date_col = app_settings.datetime_partition_column
@@ -261,22 +264,30 @@ def append_scoring_week_to_cache(
         c for c in fw_rows.columns
         if c not in preds_df.columns and c not in {target_col, "ASSOCIATION_ID"}
     ]
-    merged = preds_df.merge(
+    base = preds_df.merge(
         fw_rows[[date_col, "forecast_step"] + extra_cols],
         on=date_col,
         how="left",
     )
-    merged.insert(0, "scenario", "planned")
-    merged.insert(0, "prediction_week", prediction_week)
+    base.insert(0, "prediction_week", prediction_week)
+
+    planned = base.copy()
+    planned.insert(0, "scenario", "planned")
+    actual = base.copy()
+    actual.insert(0, "scenario", "actual")
+    new_rows = pd.concat([planned, actual], ignore_index=True)
 
     if cache_path.exists():
         existing = pd.read_csv(cache_path)
         existing = existing[
-            ~((existing["prediction_week"] == prediction_week) & (existing["scenario"] == "planned"))
+            ~(
+                (existing["prediction_week"] == prediction_week)
+                & (existing["scenario"].isin(["planned", "actual"]))
+            )
         ]
-        result = pd.concat([existing, merged], ignore_index=True)
+        result = pd.concat([existing, new_rows], ignore_index=True)
     else:
-        result = merged
+        result = new_rows
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(cache_path, index=False)
