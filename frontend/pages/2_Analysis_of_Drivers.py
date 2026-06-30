@@ -51,11 +51,11 @@ from forecastic.comparison_api import (
     build_weather_panel,
     build_xemp_color_map,
     build_xemp_combined,
-    check_for_new_data,
     get_available_series,
     get_comparison_llm_summary,
     get_forecast_dates,
     get_forecast_distances,
+    get_missing_weeks,
     load_from_catalog,
     run_predictions,
 )
@@ -151,13 +151,13 @@ def _read_actuals() -> pd.DataFrame | None:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_scoring_versions() -> list[dict]:
-    """Fetch DR scoring dataset versions, cached for 5 minutes."""
+def _get_latest_scoring_df() -> pd.DataFrame | None:
+    """Download the latest scoring dataset, cached for 5 minutes."""
     try:
-        from forecastic.api import get_scoring_dataset_versions
-        return get_scoring_dataset_versions()
+        import datarobot as dr
+        return dr.Dataset.get(scoring_dataset_id).get_as_dataframe()
     except Exception:
-        return []
+        return None
 
 
 def _load_from_cache(
@@ -239,20 +239,28 @@ def feature_comparison_page() -> None:
             )
 
             # ── New-data detection ─────────────────────────────────────────
-            _new_ver = check_for_new_data(cache_df)
-            if _new_ver:
-                _ver_label = _new_ver.get("label", _new_ver.get("created_at", "")[:10])
-                st.info(f"New scoring data available ({_ver_label})", icon="🔔")
-                if st.button("Load new week", key="load_new_week_btn", use_container_width=True):
-                    with st.spinner("Generating forecasts for new week…"):
-                        try:
-                            _new_df = load_from_catalog(scoring_dataset_id)
-                            _pred_week = append_scoring_week_to_cache(_new_df, _CACHE_FILE)
-                            st.cache_data.clear()
-                            st.success(f"Loaded forecast for week {_pred_week}")
-                            st.rerun()
-                        except Exception as _e:
-                            st.error(f"Failed to load new week: {_e}")
+            _scoring_df = _get_latest_scoring_df()
+            if _scoring_df is not None:
+                _missing = get_missing_weeks(cache_df, _scoring_df)
+                if _missing:
+                    st.info(
+                        f"{len(_missing)} week(s) not yet in cache "
+                        f"({_missing[0]} → {_missing[-1]})",
+                        icon="🔔",
+                    )
+                    if st.button(
+                        f"Load {len(_missing)} missing week(s)",
+                        key="load_new_week_btn",
+                        use_container_width=True,
+                    ):
+                        with st.spinner(f"Generating forecasts for {len(_missing)} week(s)…"):
+                            try:
+                                for _week in _missing:
+                                    append_scoring_week_to_cache(_scoring_df, _CACHE_FILE, _week)
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as _e:
+                                st.error(f"Failed: {_e}")
 
             use_live = st.checkbox("Custom (run live predictions)", key="use_live_cb")
             if use_live:
