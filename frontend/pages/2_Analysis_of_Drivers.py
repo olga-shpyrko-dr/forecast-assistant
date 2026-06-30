@@ -242,7 +242,9 @@ def feature_comparison_page() -> None:
             # ── New-data detection ─────────────────────────────────────────
             _scoring_df = _get_latest_scoring_df()
             if _scoring_df is not None:
-                update_actuals_from_scoring(_scoring_df, _CACHE_FILE)
+                if update_actuals_from_scoring(_scoring_df, _CACHE_FILE):
+                    st.cache_data.clear()
+                    st.rerun()
                 _missing = get_missing_weeks(cache_df, _scoring_df)
                 if _missing:
                     st.info(

@@ -94,7 +94,9 @@ cache_df = planned_df
 # ── New-data detection ────────────────────────────────────────────────────────
 _scoring_df = _get_latest_scoring_df()
 if _scoring_df is not None:
-    update_actuals_from_scoring(_scoring_df, _CACHE_FILE)
+    if update_actuals_from_scoring(_scoring_df, _CACHE_FILE):
+        st.cache_data.clear()
+        st.rerun()
     _missing = get_missing_weeks(cache_df, _scoring_df)
     if _missing:
         col_info, col_btn = st.columns([5, 2])
@@ -131,13 +133,22 @@ if not target_weeks:
     st.warning("No target weeks with multiple forecast distances found in the cache.")
     st.stop()
 
+# Sort: weeks with observed actuals first (most recent first), future weeks after.
+# This ensures the default selection is a meaningful week for accuracy analysis.
+if actuals_df is not None and not actuals_df.empty:
+    _actual_week_set = set(actuals_df["START_OF_WEEK"].astype(str).str[:10].unique())
+    target_weeks = (
+        sorted([w for w in target_weeks if w in _actual_week_set], reverse=True)
+        + sorted([w for w in target_weeks if w not in _actual_week_set], reverse=True)
+    )
+
 all_distances = sorted(cache_df["FORECAST_DISTANCE"].dropna().astype(int).unique(), reverse=True)
 
 # ── Selectors ─────────────────────────────────────────────────────────────────
 
 col_week, col_series, col_overlay = st.columns([3, 2, 3])
 with col_week:
-    target_week = st.selectbox("Target week", options=target_weeks, index=0)
+    target_week = st.selectbox("Target week", options=target_weeks, index=0, key="target_week_sel")
 with col_series:
     st.selectbox("Series ID", options=["TECH"], index=0, disabled=True)
 with col_overlay:

@@ -177,12 +177,14 @@ def _build_scoring_input_for_week(
     return window
 
 
-def update_actuals_from_scoring(scoring_df: pd.DataFrame, cache_path: Path) -> None:
-    """Upsert actual values from the scoring dataset into actuals_lookup.csv.
+def update_actuals_from_scoring(scoring_df: pd.DataFrame, cache_path: Path) -> bool:
+    """Overwrite actuals_lookup.csv with all non-NaN target rows from the scoring dataset.
 
-    Reads all rows with a non-NaN target, groups by date, and merges into the
-    existing actuals file (or creates it). No-ops quickly when there is nothing
-    new to add, so it is safe to call on every page render.
+    The scoring dataset is the source of truth for actual call volumes — always
+    overwrite so corrections and newly-available actuals are picked up.
+
+    Returns True if the file was (re)written, False if nothing changed.
+    Callers can use the return value to trigger a cache clear + rerun.
     """
     target_col = app_settings.target
     date_col = app_settings.datetime_partition_column
@@ -196,21 +198,23 @@ def update_actuals_from_scoring(scoring_df: pd.DataFrame, cache_path: Path) -> N
         .groupby(date_col, as_index=False)[target_col]
         .sum()
         .rename(columns={date_col: "START_OF_WEEK", target_col: "SKILL_OFFERED_SUM"})
+        .sort_values("START_OF_WEEK")
+        .reset_index(drop=True)
     )
 
+    # Skip write when count and latest date are unchanged (scoring data not updated)
     if actuals_path.exists():
         existing = pd.read_csv(actuals_path)
-        existing["START_OF_WEEK"] = existing["START_OF_WEEK"].astype(str).str[:10]
-        new_only = new_actuals[~new_actuals["START_OF_WEEK"].isin(existing["START_OF_WEEK"])]
-        if new_only.empty:
-            return  # nothing new — skip the write
-        existing = existing[~existing["START_OF_WEEK"].isin(new_actuals["START_OF_WEEK"])]
-        combined = pd.concat([existing, new_actuals], ignore_index=True)
-    else:
-        combined = new_actuals
+        if (
+            len(existing) == len(new_actuals)
+            and existing["START_OF_WEEK"].astype(str).max()
+            == new_actuals["START_OF_WEEK"].astype(str).max()
+        ):
+            return False
 
     actuals_path.parent.mkdir(parents=True, exist_ok=True)
-    combined.sort_values("START_OF_WEEK").to_csv(actuals_path, index=False)
+    new_actuals.to_csv(actuals_path, index=False)
+    return True
 
 
 def append_scoring_week_to_cache(
