@@ -260,12 +260,14 @@ def append_scoring_week_to_cache(
     fw_dates_dt = pd.to_datetime(fw_rows[date_col], errors="coerce")
     fw_rows["forecast_step"] = ((fw_dates_dt - pred_dt).dt.days / 7).round().astype(int)
 
+    # extra_cols includes forecast_step only when preds_df doesn't already have it
+    # (run_predictions may add it); never include it twice or pandas adds _x/_y suffixes
     extra_cols = [
         c for c in fw_rows.columns
         if c not in preds_df.columns and c not in {target_col, "ASSOCIATION_ID"}
     ]
     base = preds_df.merge(
-        fw_rows[[date_col, "forecast_step"] + extra_cols],
+        fw_rows[[date_col] + extra_cols],
         on=date_col,
         how="left",
     )
@@ -306,7 +308,14 @@ def get_forecast_distances(preds: list[dict]) -> list[int]:
     """Return sorted unique forecast steps (1–13) present in prediction records."""
     if not preds or "forecast_step" not in preds[0]:
         return []
-    return sorted({int(r["forecast_step"]) for r in preds if r.get("forecast_step") is not None})
+    result = set()
+    for r in preds:
+        val = r.get("forecast_step")
+        try:
+            result.add(int(val))
+        except (TypeError, ValueError):
+            pass
+    return sorted(result)
 
 
 def get_forecast_dates(planned_preds: list[dict], actual_preds: list[dict]) -> list[str]:
