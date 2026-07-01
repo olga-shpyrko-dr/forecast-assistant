@@ -152,12 +152,14 @@ def get_missing_weeks(cache_df: pd.DataFrame, scoring_df: pd.DataFrame) -> list[
 def _build_scoring_input_for_week(
     scoring_df: pd.DataFrame,
     prediction_week: str,
+    fw_features_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Slice scoring_df into the FDW + FW window for a specific prediction week.
+    """Assemble a scoring payload for prediction_week.
 
-    FDW rows (date <= prediction_week): keep real target values.
-    FW rows  (date >  prediction_week): force target to NaN so the model treats them
-    as unknowns, even if actuals have since become available in the dataset.
+    FDW rows (date <= prediction_week): from scoring_df with real target values.
+    FW rows  (date >  prediction_week): from fw_features_df if provided (for planned
+    vs actual feature distinction), otherwise from scoring_df. Target is forced to NaN
+    so the model forecasts rather than uses actuals.
     """
     target_col = app_settings.target
     date_col = app_settings.datetime_partition_column
@@ -168,12 +170,24 @@ def _build_scoring_input_for_week(
     fdw_start = (pred_dt + pd.Timedelta(weeks=fdw_start_wks)).strftime("%Y-%m-%d")
     fw_end = (pred_dt + pd.Timedelta(weeks=fw_end_wks)).strftime("%Y-%m-%d")
 
-    window = scoring_df[
-        (scoring_df[date_col] >= fdw_start) & (scoring_df[date_col] <= fw_end)
+    # FDW always comes from the scoring dataset (source of truth for historical actuals)
+    fdw_rows = scoring_df[
+        (scoring_df[date_col] >= fdw_start) & (scoring_df[date_col] <= prediction_week)
     ].copy()
 
-    # Clear target for all FW rows so the model forecasts rather than uses actuals
-    window.loc[window[date_col] > prediction_week, target_col] = float("nan")
+    # FW comes from a separate features dataset when available, else falls back to scoring_df
+    fw_source = fw_features_df if fw_features_df is not None else scoring_df
+    fw_source = fw_source.copy()
+    fw_source[date_col] = fw_source[date_col].astype(str).str[:10]
+    fw_rows = fw_source[
+        (fw_source[date_col] > prediction_week) & (fw_source[date_col] <= fw_end)
+    ].copy()
+    fw_rows[target_col] = float("nan")
+
+    if fdw_rows.empty:
+        return pd.DataFrame()
+
+    window = pd.concat([fdw_rows, fw_rows], ignore_index=True)
     return window
 
 
@@ -217,39 +231,21 @@ def update_actuals_from_scoring(scoring_df: pd.DataFrame, cache_path: Path) -> b
     return True
 
 
-def append_scoring_week_to_cache(
+def _build_scenario_rows(
     scoring_df: pd.DataFrame,
-    cache_path: Path,
     prediction_week: str,
-    force: bool = False,
-) -> None:
-    """Build planned + actual cache entries for prediction_week and append to the cache CSV.
-
-    Both scenarios are written from the same scoring dataset. For recently-loaded
-    weeks the feature values will be identical (actual features available for past
-    FW weeks, planned for future ones), but both rows are written so the
-    'actual inputs' overlay appears on the accuracy chart.
-
-    Idempotent: skips if 'planned' already exists, unless force=True.
-    """
+    scenario: str,
+    fw_features_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Run predictions for one scenario and return enriched rows with metadata columns."""
     target_col = app_settings.target
     date_col = app_settings.datetime_partition_column
 
-    scoring_df = scoring_df.copy()
-    scoring_df[date_col] = scoring_df[date_col].astype(str).str[:10]
-
-    cache_path = Path(cache_path)
-    if not force and cache_path.exists():
-        existing = pd.read_csv(cache_path)
-        already = existing[
-            (existing["prediction_week"] == prediction_week) & (existing["scenario"] == "planned")
-        ]
-        if not already.empty:
-            return
-
-    scoring_input = _build_scoring_input_for_week(scoring_df, prediction_week)
+    scoring_input = _build_scoring_input_for_week(scoring_df, prediction_week, fw_features_df)
     if scoring_input.empty:
-        raise ValueError(f"No data found in scoring dataset for week {prediction_week}.")
+        raise ValueError(
+            f"No FDW data found in scoring dataset for prediction week {prediction_week}."
+        )
 
     preds = run_predictions(scoring_input)
     preds_df = pd.DataFrame(preds)
@@ -266,18 +262,47 @@ def append_scoring_week_to_cache(
         c for c in fw_rows.columns
         if c not in preds_df.columns and c not in {target_col, "ASSOCIATION_ID"}
     ]
-    base = preds_df.merge(
-        fw_rows[[date_col] + extra_cols],
-        on=date_col,
-        how="left",
-    )
-    base.insert(0, "prediction_week", prediction_week)
+    enriched = preds_df.merge(fw_rows[[date_col] + extra_cols], on=date_col, how="left")
+    enriched.insert(0, "prediction_week", prediction_week)
+    enriched.insert(0, "scenario", scenario)
+    return enriched
 
-    planned = base.copy()
-    planned.insert(0, "scenario", "planned")
-    actual = base.copy()
-    actual.insert(0, "scenario", "actual")
-    new_rows = pd.concat([planned, actual], ignore_index=True)
+
+def append_scoring_week_to_cache(
+    scoring_df: pd.DataFrame,
+    cache_path: Path,
+    prediction_week: str,
+    force: bool = False,
+    planned_features_df: pd.DataFrame | None = None,
+    actual_features_df: pd.DataFrame | None = None,
+) -> None:
+    """Build planned + actual cache entries for prediction_week and append to the cache CSV.
+
+    Each scenario is predicted independently using its own feature inputs:
+    - planned_features_df: FW feature values as they were projected at prediction time
+    - actual_features_df:  FW feature values that actually materialised
+    Both fall back to scoring_df when not provided (produces identical predictions per scenario,
+    which is correct when no separate feature datasets are configured).
+
+    Idempotent: skips if 'planned' already exists, unless force=True.
+    """
+    date_col = app_settings.datetime_partition_column
+
+    scoring_df = scoring_df.copy()
+    scoring_df[date_col] = scoring_df[date_col].astype(str).str[:10]
+
+    cache_path = Path(cache_path)
+    if not force and cache_path.exists():
+        existing = pd.read_csv(cache_path)
+        already = existing[
+            (existing["prediction_week"] == prediction_week) & (existing["scenario"] == "planned")
+        ]
+        if not already.empty:
+            return
+
+    planned_rows = _build_scenario_rows(scoring_df, prediction_week, "planned", planned_features_df)
+    actual_rows = _build_scenario_rows(scoring_df, prediction_week, "actual", actual_features_df)
+    new_rows = pd.concat([planned_rows, actual_rows], ignore_index=True)
 
     if cache_path.exists():
         existing = pd.read_csv(cache_path)

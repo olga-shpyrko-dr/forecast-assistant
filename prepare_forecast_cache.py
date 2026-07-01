@@ -105,19 +105,31 @@ def _init_dr_client() -> None:
 
 
 def _load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load and normalise both source files. Falls back to DR AI Catalog if local files absent."""
-    if PLANNED_FILE.exists() and ACTUAL_FILE.exists():
+    """Load and normalise both source files.
+
+    Priority: PLANNED_FEATURES_DATASET_ID / ACTUAL_FEATURES_DATASET_ID env vars (AI Catalog)
+    > local CSV files > PLANNED_DATASET_ID / ACTUAL_DATASET_ID fallback IDs.
+    Set the *_FEATURES_* env vars in .env to always pull the latest version from AI Catalog.
+    """
+    planned_id = os.environ.get("PLANNED_FEATURES_DATASET_ID", PLANNED_DATASET_ID)
+    actual_id  = os.environ.get("ACTUAL_FEATURES_DATASET_ID",  ACTUAL_DATASET_ID)
+    prefer_catalog = bool(
+        os.environ.get("PLANNED_FEATURES_DATASET_ID") or os.environ.get("ACTUAL_FEATURES_DATASET_ID")
+    )
+
+    if prefer_catalog or not (PLANNED_FILE.exists() and ACTUAL_FILE.exists()):
+        source = "DR AI Catalog (env var)" if prefer_catalog else "DR AI Catalog (local files not found)"
+        print(f"  Loading from {source}")
+        print(f"    Planned dataset ID: {planned_id}")
+        print(f"    Actual  dataset ID: {actual_id}")
+        planned = dr.Dataset.get(planned_id).get_as_dataframe()
+        actual  = dr.Dataset.get(actual_id).get_as_dataframe()
+        planned[DATE_COL] = pd.to_datetime(planned[DATE_COL])
+        actual[DATE_COL]  = pd.to_datetime(actual[DATE_COL])
+    else:
         print(f"  Loading from local files")
         planned = pd.read_csv(PLANNED_FILE, parse_dates=[DATE_COL])
         actual  = pd.read_csv(ACTUAL_FILE,  parse_dates=[DATE_COL])
-    else:
-        print(f"  Local files not found — downloading from DR AI Catalog")
-        print(f"    Planned dataset ID: {PLANNED_DATASET_ID}")
-        print(f"    Actual  dataset ID: {ACTUAL_DATASET_ID}")
-        planned = dr.Dataset.get(PLANNED_DATASET_ID).get_as_dataframe()
-        actual  = dr.Dataset.get(ACTUAL_DATASET_ID).get_as_dataframe()
-        planned[DATE_COL] = pd.to_datetime(planned[DATE_COL])
-        actual[DATE_COL]  = pd.to_datetime(actual[DATE_COL])
 
     # Ensure ASSOCIATION_ID exists in both
     for df in (planned, actual):

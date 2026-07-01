@@ -42,6 +42,7 @@ _CACHE_FILE   = _find_data_file("forecast_cache.csv")
 _WEATHER_FILE = _find_data_file("nl_weekly_weather_2026.csv")
 _ACTUALS_FILE = _find_data_file("actuals_lookup.csv")
 
+import datarobot as dr
 from forecastic.api import LLMNotAvailableException, get_app_settings, scoring_dataset_id
 from forecastic.comparison_api import (
     append_scoring_week_to_cache,
@@ -60,6 +61,7 @@ from forecastic.comparison_api import (
     run_predictions,
     update_actuals_from_scoring,
 )
+from forecastic.resources import ActualFeaturesDataset, PlannedFeaturesDataset
 
 CHART_CONFIG = {"displayModeBar": False, "responsive": True}
 
@@ -155,10 +157,31 @@ def _read_actuals() -> pd.DataFrame | None:
 def _get_latest_scoring_df() -> pd.DataFrame | None:
     """Download the latest scoring dataset, cached for 5 minutes."""
     try:
-        import datarobot as dr
         return dr.Dataset.get(scoring_dataset_id).get_as_dataframe()
     except Exception:
         return None
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_planned_features_df() -> pd.DataFrame | None:
+    try:
+        dataset_id = PlannedFeaturesDataset().id
+        if dataset_id:
+            return dr.Dataset.get(dataset_id).get_as_dataframe()
+    except Exception:
+        pass
+    return None
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_actual_features_df() -> pd.DataFrame | None:
+    try:
+        dataset_id = ActualFeaturesDataset().id
+        if dataset_id:
+            return dr.Dataset.get(dataset_id).get_as_dataframe()
+    except Exception:
+        pass
+    return None
 
 
 def _load_from_cache(
@@ -241,6 +264,8 @@ def feature_comparison_page() -> None:
 
             # ── New-data detection ─────────────────────────────────────────
             _scoring_df = _get_latest_scoring_df()
+            _planned_features_df = _get_planned_features_df()
+            _actual_features_df = _get_actual_features_df()
             if _scoring_df is not None:
                 if update_actuals_from_scoring(_scoring_df, _CACHE_FILE):
                     st.cache_data.clear()
@@ -260,7 +285,11 @@ def feature_comparison_page() -> None:
                         with st.spinner(f"Generating forecasts for {len(_missing)} week(s)…"):
                             try:
                                 for _week in _missing:
-                                    append_scoring_week_to_cache(_scoring_df, _CACHE_FILE, _week)
+                                    append_scoring_week_to_cache(
+                                        _scoring_df, _CACHE_FILE, _week,
+                                        planned_features_df=_planned_features_df,
+                                        actual_features_df=_actual_features_df,
+                                    )
                                 st.cache_data.clear()
                                 st.rerun()
                             except Exception as _e:
@@ -278,7 +307,9 @@ def feature_comparison_page() -> None:
                         with st.spinner(f"Re-running predictions for {_refresh_week}…"):
                             try:
                                 append_scoring_week_to_cache(
-                                    _scoring_df, _CACHE_FILE, _refresh_week, force=True
+                                    _scoring_df, _CACHE_FILE, _refresh_week, force=True,
+                                    planned_features_df=_planned_features_df,
+                                    actual_features_df=_actual_features_df,
                                 )
                                 st.cache_data.clear()
                                 st.rerun()
