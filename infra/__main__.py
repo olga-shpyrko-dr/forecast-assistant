@@ -33,8 +33,10 @@ from forecastic.credentials import DRCredentials
 from forecastic.i18n import LocaleSettings
 from forecastic.resources import (
     ScoringDataset,
+    actual_features_dataset_env_name,
     app_env_name,
     generative_deployment_env_name,
+    planned_features_dataset_env_name,
     scoring_dataset_env_name,
     time_series_deployment_env_name,
 )
@@ -195,6 +197,12 @@ app_runtime_parameters = [
         key=var, type="string", value=os.environ[var]
     )
     for var in _AZURE_OPENAI_VARS
+    if os.environ.get(var)
+] + [
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key=var, type="string", value=os.environ[var]
+    )
+    for var in (planned_features_dataset_env_name, actual_features_dataset_env_name)
     if os.environ.get(var)
 ]
 
