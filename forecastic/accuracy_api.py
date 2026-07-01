@@ -209,17 +209,19 @@ def build_accuracy_line_chart(
 
 # ── Chart 2: XEMP by distance ─────────────────────────────────────────────────
 
-def _extract_xemp_features(row: pd.Series, df_cols: list[str]) -> list[tuple[str, float]]:
-    """Extract (feature, strength) pairs from one cache row."""
+def _extract_xemp_features(row: pd.Series, df_cols: list[str]) -> list[tuple[str, float, float | None]]:
+    """Extract (feature, strength, actual_value) triples from one cache row."""
     result = []
     for i in range(1, 11):
         feat_col = f"EXPLANATION_{i}_FEATURE_NAME"
-        str_col = f"EXPLANATION_{i}_STRENGTH"
+        str_col  = f"EXPLANATION_{i}_STRENGTH"
+        val_col  = f"EXPLANATION_{i}_ACTUAL_VALUE"
         if feat_col not in df_cols or pd.isna(row.get(feat_col)):
             continue
-        feat = re.sub(r"\s*\(actual\)\s*$", "", str(row[feat_col])).strip()
+        feat     = re.sub(r"\s*\(actual\)\s*$", "", str(row[feat_col])).strip()
         strength = float(row[str_col]) if not pd.isna(row.get(str_col)) else 0.0
-        result.append((feat, strength))
+        value    = float(row[val_col]) if val_col in df_cols and not pd.isna(row.get(val_col)) else None
+        result.append((feat, strength, value))
     return result
 
 
@@ -272,11 +274,12 @@ def build_xemp_by_distance(
         planned_fs.sort(key=lambda x: x[1])
 
         # Planned bars — solid fill, full opacity
-        for feat, strength in planned_fs:
+        for feat, strength, value in planned_fs:
             color = color_map.get(feat, BAR_COLORS[0])
             show_legend = feat not in planned_legend_added
             if show_legend:
                 planned_legend_added.add(feat)
+            val_line = f"Value: {value:,.2f}<br>" if value is not None else ""
             fig.add_trace(go.Bar(
                 x=[strength],
                 y=[feat],
@@ -285,7 +288,7 @@ def build_xemp_by_distance(
                 legendgroup=feat,
                 showlegend=show_legend,
                 marker=dict(color=color, opacity=0.85),
-                hovertemplate="<b>%{y}</b> — planned inputs<br>Strength: %{x:,.0f}<extra></extra>",
+                hovertemplate=f"<b>%{{y}}</b> — planned inputs<br>{val_line}Strength: %{{x:,.1f}}<extra></extra>",
             ), row=1, col=col_idx)
 
         # Actual inputs bars — outline only (transparent fill, feature-colour border)
@@ -296,10 +299,11 @@ def build_xemp_by_distance(
             if not ai_row_df.empty:
                 ai_row = ai_row_df.iloc[0]
                 ai_fs = _extract_xemp_features(ai_row, ai_cols)
-                ai_dict = dict(ai_fs)
-                for feat, _ in planned_fs:
-                    ai_strength = ai_dict.get(feat, 0.0)
+                ai_dict = {feat: (strength, value) for feat, strength, value in ai_fs}
+                for feat, _, _ in planned_fs:
+                    ai_strength, ai_value = ai_dict.get(feat, (0.0, None))
                     color = color_map.get(feat, BAR_COLORS[0])
+                    val_line = f"Value: {ai_value:,.2f}<br>" if ai_value is not None else ""
                     fig.add_trace(go.Bar(
                         x=[ai_strength],
                         y=[feat],
@@ -311,7 +315,7 @@ def build_xemp_by_distance(
                             color="rgba(0,0,0,0)",
                             line=dict(color=color, width=2),
                         ),
-                        hovertemplate="<b>%{y}</b> — actual inputs<br>Strength: %{x:,.0f}<extra></extra>",
+                        hovertemplate=f"<b>%{{y}}</b> — actual inputs<br>{val_line}Strength: %{{x:,.1f}}<extra></extra>",
                     ), row=1, col=col_idx)
 
     # Scenario key
