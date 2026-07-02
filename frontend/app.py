@@ -35,6 +35,9 @@ from forecastic.api import (
     get_scoring_dataset_versions,
     get_standardized_predictions,
 )
+import datarobot as dr
+from forecastic.api import scoring_dataset_id
+from forecastic.comparison_api import update_actuals_from_scoring
 from forecastic.i18n import gettext
 from forecastic.schema import FilterSpec
 
@@ -42,6 +45,15 @@ CHART_CONFIG = {"displayModeBar": False, "responsive": True}
 
 _DATA_DIR = Path(__file__).parent / "data"
 _ACTUALS_CSV = _DATA_DIR / "actuals_lookup.csv"
+_CACHE_FILE = _DATA_DIR / "forecast_cache.csv"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_latest_scoring_df() -> "pd.DataFrame | None":
+    try:
+        return dr.Dataset.get(scoring_dataset_id).get_as_dataframe()
+    except Exception:
+        return None
 
 
 @st.cache_data(ttl=300)
@@ -100,6 +112,13 @@ def fpa() -> None:
     set_title()
     chartContainer = st.container()
     explanationContainer = st.container()
+
+    # Sync actuals from scoring dataset so page 1 shows up-to-date observed values
+    _scoring_df = _get_latest_scoring_df()
+    if _scoring_df is not None and _CACHE_FILE.exists():
+        if update_actuals_from_scoring(_scoring_df, _CACHE_FILE):
+            st.cache_data.clear()
+            st.rerun()
 
     if "filters" not in st.session_state:
         st.session_state["filters"] = get_filters()
