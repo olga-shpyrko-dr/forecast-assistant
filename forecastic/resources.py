@@ -85,8 +85,8 @@ class DynamicSettings(BaseSettings):
 
 time_series_deployment_env_name: str = "FORECAST_DEPLOYMENT_ID"
 scoring_dataset_env_name: str = "FORECAST_SCORING_DATASET_ID"
-planned_features_dataset_env_name: str = "PLANNED_FEATURES_DATASET_ID"
-actual_features_dataset_env_name: str = "ACTUAL_FEATURES_DATASET_ID"
+planned_features_dataset_env_name: str = "PLANNED_DATASET_ID"
+actual_features_dataset_env_name: str = "ACTUAL_DATASET_ID"
 app_env_name: str = "DATAROBOT_APPLICATION_ID"
 generative_deployment_env_name: str = "GENERATIVE_DEPLOYMENT_ID"
 
@@ -120,11 +120,8 @@ class ScoringDataset(DynamicSettings):
 
 
 class PlannedFeaturesDataset(DynamicSettings):
-    """Optional: AI Catalog dataset with planned feature values for FW rows.
-    When set, append_scoring_week_to_cache uses this for the 'planned' scenario.
-    Falls back to the scoring dataset if not configured."""
     id: str | None = Field(
-        default=None,
+        default="6a326e0a76da3420b0d4e6e1",
         validation_alias=AliasChoices(
             "MLOPS_RUNTIME_PARAM_" + planned_features_dataset_env_name,
             planned_features_dataset_env_name,
@@ -133,11 +130,8 @@ class PlannedFeaturesDataset(DynamicSettings):
 
 
 class ActualFeaturesDataset(DynamicSettings):
-    """Optional: AI Catalog dataset with actual (realized) feature values for FW rows.
-    When set, append_scoring_week_to_cache uses this for the 'actual' scenario.
-    Falls back to the scoring dataset if not configured."""
     id: str | None = Field(
-        default=None,
+        default="6a326f4d347b28ea2e55f572",
         validation_alias=AliasChoices(
             "MLOPS_RUNTIME_PARAM_" + actual_features_dataset_env_name,
             actual_features_dataset_env_name,

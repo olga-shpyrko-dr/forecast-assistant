@@ -56,7 +56,7 @@ _SRC_DATA_DIR = ROOT / "data"
 PLANNED_FILE = _SRC_DATA_DIR / "FOR APP TEST WFM DATA PLANNED FEATURES SET TECH_ 31-03-2026_6a326e0a76da3420b0d4e6e2.csv"
 ACTUAL_FILE  = _SRC_DATA_DIR / "FOR APP TEST WFM DATA ACTUAL FEATURES SET TECH_ 17-06-2026_6a326f4d347b28ea2e55f573.csv"
 
-# ── DR AI Catalog fallback IDs (used when local files are absent) ─────────────
+# ── DR AI Catalog dataset IDs (same names as app runtime parameters) ──────────
 PLANNED_DATASET_ID = os.environ.get("PLANNED_DATASET_ID", "6a326e0a76da3420b0d4e6e1")
 ACTUAL_DATASET_ID  = os.environ.get("ACTUAL_DATASET_ID",  "6a326f4d347b28ea2e55f572")
 
@@ -107,14 +107,13 @@ def _init_dr_client() -> None:
 def _load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load and normalise both source files.
 
-    Priority: PLANNED_FEATURES_DATASET_ID / ACTUAL_FEATURES_DATASET_ID env vars (AI Catalog)
-    > local CSV files > PLANNED_DATASET_ID / ACTUAL_DATASET_ID fallback IDs.
-    Set the *_FEATURES_* env vars in .env to always pull the latest version from AI Catalog.
+    Uses PLANNED_DATASET_ID / ACTUAL_DATASET_ID env vars when set (same names as app runtime
+    parameters), otherwise falls back to local CSV files, then to the hardcoded default IDs.
     """
-    planned_id = os.environ.get("PLANNED_FEATURES_DATASET_ID", PLANNED_DATASET_ID)
-    actual_id  = os.environ.get("ACTUAL_FEATURES_DATASET_ID",  ACTUAL_DATASET_ID)
+    planned_id = PLANNED_DATASET_ID
+    actual_id  = ACTUAL_DATASET_ID
     prefer_catalog = bool(
-        os.environ.get("PLANNED_FEATURES_DATASET_ID") or os.environ.get("ACTUAL_FEATURES_DATASET_ID")
+        os.environ.get("PLANNED_DATASET_ID") or os.environ.get("ACTUAL_DATASET_ID")
     )
 
     if prefer_catalog or not (PLANNED_FILE.exists() and ACTUAL_FILE.exists()):
