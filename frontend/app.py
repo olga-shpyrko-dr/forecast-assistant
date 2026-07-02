@@ -44,9 +44,8 @@ _DATA_DIR = Path(__file__).parent / "data"
 _ACTUALS_CSV = _DATA_DIR / "actuals_lookup.csv"
 
 
-@st.cache_data
+@st.cache_data(ttl=300)
 def _load_actuals() -> pd.DataFrame:
-    """Load observed actuals from local CSV (fallback for ACTUALS_DATASET_ID)."""
     if _ACTUALS_CSV.exists():
         return pd.read_csv(_ACTUALS_CSV)
     return pd.DataFrame()

@@ -136,7 +136,9 @@ def get_missing_weeks(cache_df: pd.DataFrame, scoring_df: pd.DataFrame) -> list[
 
     available = set(df.loc[df[target_col].notna(), date_col].unique())
     cached = set(cache_df["prediction_week"].astype(str).str[:10].unique())
-    candidates = sorted(available - cached)
+    # Only look for weeks newer than what's already cached — historical gaps are intentional
+    cache_max = max(cached) if cached else "1970-01-01"
+    candidates = sorted(w for w in available - cached if w > cache_max)
 
     valid = []
     for week in candidates:
