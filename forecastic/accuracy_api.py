@@ -333,14 +333,13 @@ def build_xemp_by_distance(
         ))
 
     fig.update_layout(
-        **_LAYOUT_BASE,
-        barmode="overlay",
-        height=460,
-        hoverlabel=dict(
+        **{**_LAYOUT_BASE, "hoverlabel": dict(
             bgcolor="#1e1e1e",
             bordercolor="#81FBA5",
             font=dict(color="#FFFFFF", family="DM Sans", size=12),
-        ),
+        )},
+        barmode="overlay",
+        height=460,
         legend=dict(
             orientation="v",
             yanchor="middle",
