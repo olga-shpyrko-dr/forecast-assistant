@@ -190,6 +190,10 @@ def _build_scoring_input_for_week(
         return pd.DataFrame()
 
     window = pd.concat([fdw_rows, fw_rows], ignore_index=True)
+    # Drop ASSOCIATION_ID so run_predictions regenerates it uniformly for all rows.
+    # Without this, FW rows from a features dataset that lacks ASSOCIATION_ID end up
+    # with NaN in that column after concat, causing a 422 from the DR deployment.
+    window = window.drop(columns=["ASSOCIATION_ID"], errors="ignore")
     return window
 
 
