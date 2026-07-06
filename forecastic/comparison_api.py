@@ -987,6 +987,7 @@ def build_input_diff_table(
     actual_df: pd.DataFrame,
     series_id: Optional[str] = None,
     selected_week: Optional[list[str]] = None,
+    selected_distance: Optional[int] = None,
 ) -> pd.DataFrame:
     """Numeric delta between planned and actual input DataFrames, sorted by |delta|."""
     date_col = app_settings.datetime_partition_column
@@ -997,6 +998,10 @@ def build_input_diff_table(
     if selected_week:
         p = p[p[date_col].isin(selected_week)]
         a = a[a[date_col].isin(selected_week)]
+
+    if selected_distance is not None and "forecast_step" in p.columns:
+        p = p[p["forecast_step"] == selected_distance]
+        a = a[a["forecast_step"] == selected_distance]
 
     skip = {date_col, _SERIES_COL, app_settings.target, f"{app_settings.target} (actual)"}
     numeric_cols = [

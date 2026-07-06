@@ -567,6 +567,7 @@ def feature_comparison_page() -> None:
         planned_df_s, actual_df_s,
         series_id=selected_series,
         selected_week=selected_week,
+        selected_distance=selected_distance,
     )
     with st.expander(f"Input feature differences{week_label_str}"):
         if not diff_df.empty:
