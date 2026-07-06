@@ -240,9 +240,10 @@ def feature_comparison_page() -> None:
             cached_target_weeks = sorted(
                 cache_df["START_OF_WEEK"].astype(str).str[:10].unique().tolist()
             )
-            # Default to Apr–May 2026 (first week ≥ 2026-04-01, last week ≤ 2026-05-31)
-            _default_start = next((w for w in cached_target_weeks if w >= "2026-04-01"), cached_target_weeks[0])
-            _default_end   = next((w for w in reversed(cached_target_weeks) if w <= "2026-05-31"), cached_target_weeks[-1])
+            # Default: end = last available week; start = ~13 weeks before that
+            _default_end   = cached_target_weeks[-1]
+            _horizon_start = (pd.Timestamp(_default_end) - pd.Timedelta(weeks=13)).strftime("%Y-%m-%d")
+            _default_start = next((w for w in cached_target_weeks if w >= _horizon_start), cached_target_weeks[0])
             col_s, col_e = st.columns(2)
             start_sel = col_s.selectbox("From", options=cached_target_weeks,
                                         index=cached_target_weeks.index(_default_start),
