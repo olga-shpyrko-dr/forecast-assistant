@@ -1,0 +1,18 @@
+---
+inputSet:
+  name: daily
+  identifier: daily
+  projectIdentifier: recipeforecasticreactic
+  orgIdentifier: No_Code_Apps
+  pipeline:
+    identifier: trivyScan
+    template:
+      templateInputs:
+        properties:
+          ci:
+            codebase:
+              repoName: recipe-forecastic-reactic
+              build:
+                type: branch
+                spec:
+                  branch: main

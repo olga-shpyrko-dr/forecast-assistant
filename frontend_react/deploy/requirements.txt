@@ -1,0 +1,15 @@
+datarobot>=3.9.1,<4.0.0
+datarobot-predict>=1.9.2,<1.10
+
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+babel>=2.16.0,<3
+openai>=1.31.2,<2
+pandas>=2.2.2,<3
+plotly>=5.24.1,<6
+
+eval-type-backport>=0.2.0,<0.3
+
+# Serves the prebuilt React SPA (forecastic/build) + the JSON API; includes uvicorn.
+fastapi[standard]>=0.115.5,<1

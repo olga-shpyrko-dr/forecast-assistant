@@ -1,0 +1,224 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Unreleased
+
+### Added
+
+- React frontend (`frontend_react/`) served by FastAPI from `forecastic/build`, as an
+  alternative to the Streamlit app.
+- `FRONTEND_TYPE` setting (`react` | `streamlit`, default `streamlit`) selecting which
+  frontend Pulumi deploys.
+- React app: choose the scoring dataset from the Data Registry (filtered to the app's
+  use case) or upload a new file, instead of only the deploy-time scoring dataset. New
+  `GET /registryDatasets` and `POST /datasets/upload` endpoints; filtering is hidden
+  while a custom dataset is active and the selected dataset name is shown under
+  "Prediction dataset".
+
+## [0.3.4] - 2026-07-15
+
+### Fixed
+
+- Restored the `datarobotx-idp` dependency dropped in `0.3.3`. It's still required by the model training and scoring-prep notebooks (`datarobotx.idp.use_cases`, `.datasets`, `.autopilot`, `.calendars`, `.registered_model_versions`); only its usage in `infra/__main__.py` was removable.
+
+## [0.3.3] - 2026-07-15
+
+### Fixed
+
+- Generative LLM custom models now submit the full blueprint/DRUM default runtime parameter set explicitly alongside credentials, replacing the previous read-modify-write version merge. The merge only worked when the existing version still carried the defaults, so a deployment already broken by a partial submission couldn't self-repair; explicit submission fixes it on the next `pulumi up`.
+
+### Removed
+
+- Removed the `datarobotx-idp`-based custom model version merge helper from `infra/__main__.py` and the now-unused `datarobotx-idp` dependency.
+
+## [0.3.2] - 2026-06-23
+
+### Changed
+
+- Updated the default LLM to Azure OpenAI GPT-5-mini, with README instructions for changing the LLM.
+
+### Fixed
+
+- Fixed generative LLM custom model runtime parameters being overwritten with only the credential values when provider LLM credentials are configured. Credentials are now merged onto the blueprint's default runtime parameters instead of replacing them.
+
+## [0.3.1] - 2026-01-27
+
+### Fixed
+
+- Fixed DR CLI update
+
+## [0.3.0] - 2026-01-21
+
+### Added
+
+- Integration with DataRobot Python client 3.9.1 `CustomApplication` and `CustomApplicationSource` entities.
+- Dynamic resource fetching from CustomApplicationSource when creating CustomApplications.
+- Added `deploy` task to simplify deployment process.
+
+### Changed
+
+- Updated README.md structure to include Quick Start with DataRobot CLI, Codespace build instructions, and manual setup details.
+
+### Fixed
+- Fixed credential handling when no credentials available
+- Fixed chart not displaying correctly if data is not ordered by date
+
+## [0.2.0] - 2025-07-14
+
+### Changed
+- Increased the maximum wait time for Autopilot model training in the training notebook to 1200 seconds, reducing the likelihood of timeouts during long-running model builds.
+
+
+## [0.1.19] - 2025-07-08
+
+### Changed
+- Better document reuse of existing forecast deployments via `FORECAST_DEPLOYMENT_ID` environment variable.
+
+### Added
+- Ability to automatically populate `resources` field of created Custom Applications from their Custom Application Sources.
+
+
+## [0.1.18] - 2025-07-01
+
+### Added
+- Support for reusing existing forecast deployments via `FORECAST_DEPLOYMENT_ID` environment variable
+- Ability to skip model training when using existing deployments for faster app setup
+- Automatic extraction of model metadata from existing DataRobot deployments
+
+## [0.1.17] - 2025-04-07
+
+### Added
+- Forecast assistant now uses a DataRobot LLM Blueprint
+- LLM integration is now optional
+- Support for existing textgen deployments or registered models
+- Installed [the datarobot-pulumi-utils library](https://github.com/datarobot-oss/datarobot-pulumi-utils) to incorporate majority of reused logic in the `infra.*` subpackages.
+
+## [0.1.16] - 2025-03-06
+
+### Fixed
+- "Already linked" error
+
+### Changed
+- remove drx calls in pulumi main program
+
+## [0.1.15] - 2025-01-15
+
+### Fixed
+
+- Codespace python env no longer broken by quickstart
+- Scoring dataset id no longer overridden by pulumi if project has been run before
+
+### Changed
+
+- Move pulumi entrypoint to the infra directory
+
+## [0.1.14] - 2025-01-06
+
+### Added
+
+- Update safe_dump to support unicode
+
+## [0.1.13] - 2024-12-18
+
+### Changed
+- App backend no longer depends on the current working dir to read yaml settings
+- Default scoring data is a 6 month period
+
+
+### Fixed
+
+- Removed duplicative plotting call from streamlit frontend
+- Minor formatting issue in streamlit date picker font
+- quickstart now asks you to change the default project name
+- quickstart now prints the application URL
+- quickstart.py now supports multiline values correctly, even with multiple comments
+
+## [0.1.12] - 2024-12-12
+
+### Fixed
+
+- quickstart.py now supports multiline values correctly
+- Corrected column pointing in is_target_derived logic
+
+### Added
+
+- App metadata to api for creator email and created date
+
+### Changed
+
+- Logic for deciding default number of historical rows to render in timeseries plots
+- Add python 3.9 requirement to README
+
+## [0.1.11] - 2024-12-09
+
+### Added
+
+- rest_api.py that provides API routes using FastAPI and functions from api.py
+- new route `/share` for application sharing
+- add context tracing to this recipe.
+
+### Fixed
+
+- Fix comment handling in quickstart
+
+### Changed
+
+- add 3.9 compatibility check to mypy
+- add new functions to format predictions for React frontend
+- add pyproject.toml to store lint and test configuration
+- revise README based on user feedback
+- update pulumi-datarobot to >=0.4.5
+
+## [0.1.10] - 2024-11-14
+
+### Changed
+
+- Bring release/10.2 in sync with main
+
+## [0.1.9] - 2024-11-14
+
+### Changed
+
+- Removed specific concurrency for batch predictions.
+- improvements to the README
+
+## [0.1.8] - 2024-11-12
+
+### Changed
+
+- Bring release/10.2 in sync with main
+
+## [0.1.7] - 2024-11-12
+
+### Fixed
+
+- Ensure app settings update does not cause `pulumi up` to fail
+- Typehinting no longer breaks on python3.9
+
+### Changed
+
+- Update DataRobot logo
+
+## [0.1.6] - 2024-11-07
+
+### Changed
+
+- Bring release/10.2 in sync with main
+
+## [0.1.5] - 2024-11-07
+
+### Added
+
+- quickstart.py script for getting started more quickly
+
+## [0.1.4] - 2024-10-28
+
+### Added
+
+- Changelog file to keep track of changes in the project.
+- App localization support for Spanish and Japanese.
+- Link Application and Deployment to the use case in DR

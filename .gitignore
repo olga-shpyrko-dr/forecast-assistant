@@ -1,0 +1,26 @@
+# Generated Taskfile
+Taskfile.gen.yaml
+
+# python
+__pycache__/
+venv
+.venv
+.env
+.DS_Store
+.mypy_cache
+.vscode/
+frontend/dynamic_app_settings.json
+frontend/metadata.yaml
+frontend_react/deploy/metadata.yaml
+forecastic/build/
+frontend_react/react_src/node_modules/
+forecastic/train_model_output.*.yaml
+notebooks/prep_scoring_data_output.*.yaml
+e2e/test_results/*
+.idea
+
+.env*
+!.env.template
+Pulumi.*.yaml
+
+.datarobot/cli/state.yaml

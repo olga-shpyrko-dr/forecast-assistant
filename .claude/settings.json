@@ -1,0 +1,67 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make lint)",
+      "Bash(make fix-lint)",
+      "Bash(ruff format:*)",
+      "Bash(ruff check:*)",
+      "Bash(mypy:*)",
+      "Bash(pytest:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(task --list:*)"
+    ],
+    "ask": [
+      "Bash(pulumi:*)",
+      "Bash(task infra:*)",
+      "Bash(task deploy:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Read CLAUDE.md. Key rules: (1) never run pulumi/task infra/deploy without approval (2) never commit .env/secrets (3) make lint must pass before commit (4) PRs are --draft, never merge (5) plan before non-trivial changes.'",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/qa-precheck.sh\"",
+            "onFailure": "warn"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/qa-postcheck.sh\"",
+            "onFailure": "warn"
+          }
+        ]
+      }
+    ]
+  }
+}
