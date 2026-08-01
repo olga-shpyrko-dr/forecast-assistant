@@ -4,10 +4,23 @@ root:
     type: secret_string
     optional: true
     help: "The passphrase used to encrypt and decrypt the private key. This value is required if you're not using pulumi cloud."
+  - env: FRONTEND_TYPE
+    type: string
+    optional: true
+    default: "streamlit"
+    help: "Which frontend to deploy: 'react' or 'streamlit'."
   - env: FORECAST_DEPLOYMENT_ID
     type: string
     optional: true
     help: "To use an existing Forecast Deployment, provide the deployment ID"
+  - env: TRAINING_DATASET_ID
+    type: string
+    optional: true
+    help: "To use a pre-existing DR AI Catalog dataset for training (skips local CSV read and upload), provide the dataset ID"
+  - env: FORECAST_SCORING_DATASET_ID
+    type: string
+    optional: true
+    help: "To use a pre-existing DR AI Catalog dataset for scoring (skips prep_scoring_data.ipynb), provide the dataset ID"
   - env: TEXTGEN_REGISTERED_MODEL_ID
     type: string
     optional: true
@@ -21,6 +34,10 @@ root:
     optional: true
     default: "datarobot-deployed-llm"
     help: "The model name expected by the TextGen model (e.g. gpt-4o-mini). For NIM models, 'datarobot-deployed-llm' will automatically be translated to the correct model name."
+  - env: LLM_GATEWAY_MODEL
+    type: string
+    optional: true
+    help: "To call DataRobot's LLM Gateway directly (bypasses all generative resource provisioning), provide a bare model/llmId from the genai/llmgw/catalog/ response, e.g. 'vertex_ai/gemini-1.5-flash-002' (not 'datarobot/'-prefixed)."
   - key: "enable_openai"
     help: "Do you want to configure Azure OpenAI?"
     options:
