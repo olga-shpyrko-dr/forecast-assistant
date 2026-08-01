@@ -13,6 +13,8 @@
 # limitations under the License.
 from __future__ import annotations
 
+import os
+
 import datarobot as dr
 import pulumi_datarobot as datarobot
 from datarobot_pulumi_utils.schema.custom_models import (
@@ -36,7 +38,15 @@ from .settings_main import (
     project_name,
 )
 
-LLM = LLMs.AZURE_OPENAI_GPT_5_MINI
+# Set LLM_GATEWAY_MODEL to call DataRobot's LLM Gateway directly at runtime (e.g.
+# "vertex_ai/gemini-1.5-flash-002" — a bare model/llmId from the `genai/llmgw/catalog/`
+# response, not "datarobot/"-prefixed). This bypasses the whole Playground/LLM
+# Blueprint/Custom Model/Deployment chain below entirely — no generative resources
+# get provisioned; the app calls the Gateway's OpenAI-compatible endpoint directly
+# with a DataRobot API token. Takes precedence over LLM if both are somehow set.
+LLM_GATEWAY_MODEL = os.environ.get("LLM_GATEWAY_MODEL") or None
+
+LLM = None if LLM_GATEWAY_MODEL else LLMs.AZURE_OPENAI_GPT_5_MINI
 
 if LLM is not None:
     playground_args = PlaygroundArgs(

@@ -17,6 +17,7 @@ import json
 import textwrap
 from typing import Any
 
+import datarobot as dr
 import pulumi
 import pulumi_datarobot as datarobot
 import pydantic
@@ -29,6 +30,26 @@ from forecastic.credentials import (
     GoogleCredentials,
 )
 from infra.settings_main import project_name
+
+
+def verify_llm_gateway_model(model_id: str) -> None:
+    """Raise a clear error at deploy time if LLM_GATEWAY_MODEL isn't a valid, active
+    model in DataRobot's LLM Gateway catalog — instead of failing confusingly later
+    at runtime when the app tries to call it.
+    """
+    response = dr.Client().get("genai/llmgw/catalog/").json()
+    catalog = response.get("data", [])
+    matched = [m for m in catalog if m.get("model") == model_id or m.get("llmId") == model_id]
+    active_models = ", ".join(sorted(m["model"] for m in catalog if m.get("isActive")))
+    if not matched:
+        raise ValueError(
+            f"LLM_GATEWAY_MODEL '{model_id}' was not found in the LLM Gateway catalog. "
+            f"Available models: {active_models}"
+        )
+    if not matched[0].get("isActive"):
+        raise ValueError(
+            f"LLM_GATEWAY_MODEL '{model_id}' is not active. Available models: {active_models}"
+        )
 
 
 def get_blueprint_runtime_parameters(

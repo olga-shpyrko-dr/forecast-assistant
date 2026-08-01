@@ -35,6 +35,7 @@ from forecastic.resources import (
     ScoringDataset,
     app_env_name,
     generative_deployment_env_name,
+    llm_gateway_model_env_name,
     scoring_dataset_env_name,
     time_series_deployment_env_name,
 )
@@ -59,6 +60,7 @@ from utils.credentials import (
     get_blueprint_runtime_parameters,
     get_credential_runtime_parameter_values,
     get_credentials,
+    verify_llm_gateway_model,
 )
 from utils.papermill import run_notebook
 
@@ -76,6 +78,12 @@ if settings_generative.LLM == LLMs.DEPLOYED_LLM:
         raise ValueError(
             "Either TEXTGEN_DEPLOYMENT_ID or TEXTGEN_REGISTERED_MODEL_ID must be set when using a deployed LLM. Please check your .env file"
         )
+
+if settings_generative.LLM_GATEWAY_MODEL:
+    pulumi.info(
+        f"Using LLM Gateway directly with model: {settings_generative.LLM_GATEWAY_MODEL}"
+    )
+    verify_llm_gateway_model(settings_generative.LLM_GATEWAY_MODEL)
 
 LocaleSettings().setup_locale()
 
@@ -185,6 +193,15 @@ app_runtime_parameters = [
         key="APP_LOCALE", type="string", value=LocaleSettings().app_locale
     ),
 ]
+
+if settings_generative.LLM_GATEWAY_MODEL:
+    app_runtime_parameters.append(
+        datarobot.ApplicationSourceRuntimeParameterValueArgs(
+            key=llm_gateway_model_env_name,
+            type="string",
+            value=settings_generative.LLM_GATEWAY_MODEL,
+        ),
+    )
 
 credentials: DRCredentials | None
 

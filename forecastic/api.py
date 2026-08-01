@@ -43,6 +43,7 @@ from forecastic.i18n import gettext
 from forecastic.resources import (
     Application,
     GenerativeDeployment,
+    LLMGatewaySettings,
     ScoringDataset,
     TimeSeriesDeployment,
     app_settings_file_name,
@@ -97,14 +98,26 @@ def _get_completion(
     llm_model_name: Optional[str] = None,
 ) -> str:
     """Generate LLM completion."""
-    generative_deployment_id = GenerativeDeployment().id
+    gateway_model = LLMGatewaySettings().model
     try:
         dr_client = dr.client.get_client()
-        azure_client = OpenAI(
-            base_url=dr_client.endpoint.rstrip("/")
-            + f"/deployments/{generative_deployment_id}",
-            api_key=dr_client.token,
-        )
+        if gateway_model:
+            # Direct LLM Gateway: no Playground/Blueprint/Deployment chain was
+            # provisioned — call the Gateway's OpenAI-compatible endpoint directly
+            # with the catalog model id (see infra/settings_generative.py).
+            client = OpenAI(
+                base_url=dr_client.endpoint.rstrip("/") + "/genai/llmgw",
+                api_key=dr_client.token,
+            )
+            model = gateway_model
+        else:
+            generative_deployment_id = GenerativeDeployment().id
+            client = OpenAI(
+                base_url=dr_client.endpoint.rstrip("/")
+                + f"/deployments/{generative_deployment_id}",
+                api_key=dr_client.token,
+            )
+            model = "datarobot-deployed-llm"
         if system_prompt:
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -112,9 +125,9 @@ def _get_completion(
             ]
         else:
             messages = [{"role": "user", "content": prompt}]
-        resp = azure_client.chat.completions.create(
+        resp = client.chat.completions.create(
             messages=messages,  # type: ignore[arg-type]
-            model="datarobot-deployed-llm",
+            model=model,
             temperature=temperature,
         )
         return str(resp.choices[0].message.content)
@@ -129,9 +142,12 @@ def get_app_settings() -> AppSettings:
 
 
 def is_llm_commentary_available() -> bool:
-    """True when app config allows LLM commentary and a generative deployment exists."""
+    """True when app config allows LLM commentary and a generative deployment
+    (or a direct LLM Gateway model) is configured."""
     if not app_settings.llm_commentary_enabled:
         return False
+    if LLMGatewaySettings().model:
+        return True
     try:
         return bool(GenerativeDeployment().id)
     except ValidationError:
