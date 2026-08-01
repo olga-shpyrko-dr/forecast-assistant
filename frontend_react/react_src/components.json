@@ -14,5 +14,8 @@
     "components": "~/components",
     "hooks": "~/components/hooks",
     "utils": "~/lib/utils"
+  },
+  "registries": {
+    "@dr-ui": "https://dr-ui.datarobot.com/r/{name}.json"
   }
 }
