@@ -89,6 +89,16 @@ dr start
 When deployment completes, the terminal will display a link to your running application.\
 👉 **Click the link to open and start using your app!**
 
+> **⚠️ Known issue — Python version prerequisite check:** `dr start` may report `Wrong versions of tools: Python (minimal: v3.X.0, installed: v3.Y.Z)` and offer to install the correct version. On Linux (including DataRobot Codespaces), that auto-install currently fails with `Error: no install command defined for "Python" on linux` — accepting the prompt won't fix it. If you hit this, fix the active Python yourself first, then re-run `dr start`:
+> ```sh
+> uv python install 3.12          # or whichever version the error names
+> uv venv --python 3.12 .venv --clear
+> source .venv/bin/activate
+> python --version                 # confirm it now meets the minimum
+> dr start
+> ```
+> (`uv` ships in DataRobot Codespaces by default. If it's not available in your environment, use `pyenv` or your system package manager to get an interpreter meeting the minimum instead.)
+
 ### Template Development
 
 For local development, follow all of the steps below.
@@ -132,7 +142,7 @@ In a terminal, run the following command:
 ```bash
 python quickstart.py YOUR_PROJECT_NAME  # Windows users may have to use `py` instead of `python`
 ```
-Python 3.12+ is required.
+Python 3.11+ is required.
 
 Advanced users who want to control virtual environment creation, dependency installation, environment variable setup,
 and `pulumi` invocation, see [the advanced setup instructions](#setup-for-advanced-users).

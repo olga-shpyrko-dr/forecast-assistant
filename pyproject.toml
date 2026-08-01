@@ -4,7 +4,7 @@ version = "0.0.1"
 description = """
 The forecast assistant is a customizable application template for building AI-powered forecasts.
 """
-requires-python = ">=3.12, <3.14"
+requires-python = ">=3.11, <3.14"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

@@ -22,8 +22,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-if sys.version_info[0] < 3 or (sys.version_info[0] >= 3 and sys.version_info[1] < 12):
-    print("Must be using Python version 3.12 or higher")
+if sys.version_info[0] < 3 or (sys.version_info[0] >= 3 and sys.version_info[1] < 11):
+    print("Must be using Python version 3.11 or higher")
     exit(1)
 
 work_dir = Path(os.path.dirname(__file__))
