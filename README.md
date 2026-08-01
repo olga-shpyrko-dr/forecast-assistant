@@ -32,19 +32,20 @@ The forecast assistant is a customizable application template for building AI-po
 
 ## Table of contents
 1. [Quick Start](#-quick-start)
-2. [Architecture overview](#architecture-overview)
-3. [Why build AI Apps with DataRobot app templates?](#why-build-ai-apps-with-datarobot-app-templates)
-4. [Make changes](#make-changes)
+2. [Choosing your setup](#choosing-your-setup)
+3. [Architecture overview](#architecture-overview)
+4. [Why build AI Apps with DataRobot app templates?](#why-build-ai-apps-with-datarobot-app-templates)
+5. [Make changes](#make-changes)
    - [Change the data and how the model is trained](#change-the-data-and-how-the-model-is-trained)
    - [Disable the LLM](#disable-the-llm)
    - [Change the LLM](#change-the-llm)
    - [Add a new LLM](#add-a-new-llm)
    - [Change the front-end](#change-the-front-end)
    - [Change the language in the front-end](#change-the-language-in-the-front-end)
-5. [Share results](#share-results)
-6. [Delete all resources](#delete-all-provisioned-resources)
-7. [Setup for advanced users](#setup-for-advanced-users)
-8. [Data privacy](#data-privacy)
+6. [Share results](#share-results)
+7. [Delete all resources](#delete-all-provisioned-resources)
+8. [Setup for advanced users](#setup-for-advanced-users)
+9. [Data privacy](#data-privacy)
 
 ## 🚀 Quick Start
 
@@ -137,6 +138,47 @@ Advanced users who want to control virtual environment creation, dependency inst
 and `pulumi` invocation, see [the advanced setup instructions](#setup-for-advanced-users).
 
 
+## Choosing your setup
+
+Before your first `pulumi up` (or `dr start` / `python quickstart.py`), there are three independent choices worth making deliberately. All of them are just `.env` or `infra/settings_generative.py` edits — you can change any of them later and re-run `pulumi up` to update the same stack.
+
+### 1. Front-end: React or Streamlit
+
+Set `FRONTEND_TYPE` in `.env` — `react` or `streamlit` (default: `streamlit` if unset).
+
+Both options are served by the **same** Pulumi stack, the **same** `forecastic/` backend, and deploy to the **same** Custom Application resource — switching is just changing the value and re-running `pulumi up`. There's no need to run two separate stacks unless you specifically want both frontends live at once (see [Change the front-end](#change-the-front-end) for how to do that with `pulumi stack init`).
+
+| | `FRONTEND_TYPE=streamlit` | `FRONTEND_TYPE=react` |
+|---|---|---|
+| Source | `frontend/` | `frontend_react/react_src/` |
+| Extra build step | None | **Yes** — must run `cd frontend_react/react_src && yarn install && yarn build` before `pulumi up` (builds the SPA into `forecastic/build/`, which FastAPI serves) |
+| Charting | Server-rendered Plotly (`forecastic/api.py::get_forecast_as_plotly_json`) | Client-side charts (`visx`/`d3`) |
+| Filtering | Server-side | Client-side |
+
+See [Change the front-end](#change-the-front-end) for details.
+
+### 2. LLM: build from credentials, or attach an existing deployment
+
+Configured in `infra/settings_generative.py` and `.env`:
+
+- **Build from credentials (default)** — `LLM = LLMs.AZURE_OPENAI_GPT_5_MINI` (or any other `LLMs.*` member for AWS Bedrock / Google Vertex AI / etc.). Provide that provider's credentials in `.env` (e.g. `OPENAI_API_KEY`/`OPENAI_API_BASE` for Azure). Pulumi automatically provisions a governed Playground → LLM Blueprint → Custom Model → Deployment chain from those credentials — nothing to deploy yourself.
+- **Attach an existing deployment** — `LLM = LLMs.DEPLOYED_LLM`, plus either `TEXTGEN_DEPLOYMENT_ID` or `TEXTGEN_REGISTERED_MODEL_ID` in `.env`. No new generative model gets built; the app just points at what you already have.
+- **Disable entirely** — `LLM = None`. No generative resources are provisioned and the AI-commentary toggle in the app is greyed out.
+
+See [Change the LLM](#change-the-llm), [Add a new LLM](#add-a-new-llm), and [Disable the LLM](#disable-the-llm).
+
+### 3. Training vs. deployment mode
+
+Controlled entirely by `.env` vars — each one independently lets you skip a step of the default from-scratch pipeline (train a new model from a local CSV, then prep scoring data from a local CSV):
+
+| Variable | Effect when set |
+|---|---|
+| `FORECAST_DEPLOYMENT_ID` | Skip model training entirely; reuse an existing forecast deployment (metadata is extracted from it). No batch prediction job or retraining policy gets created. |
+| `TRAINING_DATASET_ID` | Skip the local CSV read/upload in `train_model.ipynb`; train against a dataset already in the AI Catalog. |
+| `FORECAST_SCORING_DATASET_ID` | Skip `prep_scoring_data.ipynb` entirely; score against a dataset already in the AI Catalog. |
+
+These three are independent — e.g. you can train a new model from an existing `TRAINING_DATASET_ID` while still scoring from a fresh local CSV. See [Use an existing forecast deployment](#use-an-existing-forecast-deployment).
+
 ## Architecture overview
 ![Forecast assistant](https://s3.us-east-1.amazonaws.com/datarobot_public/drx/recipe_gifs/forecast-assistant-diagram.svg)
 
@@ -149,8 +191,9 @@ custom AI logic and a fully custom front-end or utilize DataRobot's off-the-shel
   ```
 - **App logic**: Necessary for user consumption, whether via a hosted front-end or integrating into an external consumption layer.
   ```
-  frontend/  # Streamlit frontend
-  forecastic/  # App biz logic & runtime helpers
+  frontend/               # Streamlit frontend
+  frontend_react/react_src/  # React frontend (see FRONTEND_TYPE)
+  forecastic/             # App biz logic & runtime helpers, shared by both frontends
   ```
 - **Operational logic**: Necessary to turn on all DataRobot assets.
   ```
@@ -236,9 +279,18 @@ When using an existing deployment, you may need to modify these files to match y
 - **Batch Prediction**: Not created (you'll need to set up your own if needed)
 - **Retraining Policy**: Not created (you'll need to set up your own if needed)
 
+### Use an existing AI Catalog dataset for training or scoring
+
+Independent of `FORECAST_DEPLOYMENT_ID` above, you can skip the local-CSV steps of the pipeline while still training a new model:
+
+- `TRAINING_DATASET_ID` — skips the local CSV read/upload in `notebooks/train_model.ipynb`; trains against a dataset already registered in the AI Catalog.
+- `FORECAST_SCORING_DATASET_ID` — skips running `notebooks/prep_scoring_data.ipynb` entirely; scores against a dataset already in the AI Catalog. This is the dataset used at deploy time — it's distinct from swapping datasets at runtime in the app UI (React only; see the in-app "Change dataset" picker) or replaying a previous dataset *version* (both front-ends; see the "Prediction Timestamp" selector).
+
+Set either in `.env`, then run `pulumi up` as usual.
+
 ### Change the LLM
 
-1. Modify the `LLM` setting in `infra/settings_generative.py` by changing `LLM=LLMs.AZURE_OPENAI_GPT_4_O_MINI` to any other LLM from the `LLMs` object. 
+1. Modify the `LLM` setting in `infra/settings_generative.py` (default: `LLM=LLMs.AZURE_OPENAI_GPT_5_MINI`) by changing it to any other LLM from the `LLMs` object.
      - Trial users: Please set `LLM=LLMs.AZURE_OPENAI_GPT_4_O_MINI` since GPT-4o is not supported in the trial. Use the `OPENAI_API_DEPLOYMENT_ID` in `.env` to override which model is used in your azure organisation. You'll still see GPT 4o-mini in the playground, but the deployed app will use the provided azure deployment.  
 2. To use an existing TextGen model or deployment:
       - In `infra/settings_generative.py`: Set `LLM=LLMs.DEPLOYED_LLM`.
@@ -296,20 +348,35 @@ If the LLM you want to use isn't already defined in the `LLMs` object, you can r
    ```
 
 ### Change the front-end
-1. Ensure you have already run `pulumi up` at least once (to provision the time series deployment).
-2. Streamlit assets are in `frontend/` and can be edited. After provisioning the stack
-   at least once, you can also test the front-end locally using `streamlit run app.py` from the
-   `frontend/` directory (don't forget to initialize your environment using `source set_env.sh`).
+
+This template ships **two** front-ends — a Streamlit app (`frontend/`) and a React SPA (`frontend_react/react_src/`) — sharing one `forecastic/` backend and one Pulumi stack. `FRONTEND_TYPE` in `.env` (`react` or `streamlit`, default `streamlit`) selects which one gets bundled into the deployed Custom Application.
+
+**To switch which one is deployed:**
+1. Set `FRONTEND_TYPE=react` or `FRONTEND_TYPE=streamlit` in `.env`.
+2. If switching to `react`, build the SPA first — Pulumi does not do this for you:
+   ```bash
+   cd frontend_react/react_src
+   yarn install
+   yarn build   # outputs into ../../forecastic/build/, served by FastAPI
+   cd ../..
+   ```
+3. Run `pulumi up` to update your stack with the change.
+   ```bash
+   source set_env.sh  # On windows use `set_env.bat`
+   pulumi up
+   ```
+
+**To run a front-end locally** (after `pulumi up` has provisioned the time series deployment at least once):
+- Streamlit: `source set_env.sh && cd frontend && streamlit run app.py`
+- React: `cd frontend_react/react_src && yarn dev` (dev server proxies API calls to the FastAPI backend; see `frontend_react/react_src/src/api/apiClient.ts`)
+
+**To test both front-ends side by side** instead of toggling one stack back and forth, use a second Pulumi stack:
 ```bash
-source set_env.sh  # On windows use `set_env.bat`
-cd frontend
-streamlit run app.py
-```
-3. Run `pulumi up` again to update your stack with the changes.
-```bash
-source set_env.sh  # On windows use `set_env.bat`
+pulumi stack init react-test   # or any name
+# set FRONTEND_TYPE accordingly in .env, then:
 pulumi up
 ```
+Each stack provisions its own use case, deployment, and Custom Application — expect real, separate DataRobot resources per stack, not a preview.
 
 #### Change the language in the front-end
 Optionally, you can set the application locale in `forecastic/i18n.py`, e.g. `APP_LOCALE = LanguageCode.JA`. Supported locales are Japanese and English, with English set as the default.
@@ -338,8 +405,13 @@ The following environment variables can be configured in your `.env` file:
 - `DATAROBOT_ENDPOINT`: Your DataRobot API endpoint (e.g., `https://app.datarobot.com`)
 - `DATAROBOT_API_TOKEN`: Your DataRobot API token
 
-**Optional for existing deployments:**
+**Optional — front-end selection:**
+- `FRONTEND_TYPE`: `react` or `streamlit` (default: `streamlit`). See [Choosing your setup](#choosing-your-setup) and [Change the front-end](#change-the-front-end).
+
+**Optional for existing deployments/datasets:**
 - `FORECAST_DEPLOYMENT_ID`: ID of an existing forecast deployment to reuse instead of creating a new one
+- `TRAINING_DATASET_ID`: ID of an existing AI Catalog dataset to train against, skipping local CSV upload
+- `FORECAST_SCORING_DATASET_ID`: ID of an existing AI Catalog dataset to score against, skipping `prep_scoring_data.ipynb`
 - `TEXTGEN_REGISTERED_MODEL_ID`: ID of an existing registered model for LLM functionality
 - `TEXTGEN_DEPLOYMENT_ID`: ID of an existing LLM deployment for LLM functionality
 - `CHAT_MODEL_NAME`: Model name for LLM deployments (e.g., "claude-3-7-sonnet-20250219", "datarobot-deployed-llm")
