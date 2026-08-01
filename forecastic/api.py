@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import colorsys
 import datetime as dt
 import functools
 import io
@@ -251,6 +252,45 @@ def get_scoring_dataset_versions(
     ]
 
 
+def get_chart_series_options(
+    filter_selection: List[FilterSpec],
+) -> tuple[str | None, list[str]]:
+    """Label and sidebar selection order for the chart series picker."""
+    multiseries_col = app_settings.multiseries_id_column
+    display_name_by_column = {
+        category.column_name: category.display_name
+        for category in app_settings.filterable_categories
+    }
+    for spec in filter_selection:
+        if spec.column == multiseries_col and spec.selected_values:
+            return display_name_by_column.get(multiseries_col, multiseries_col), list(
+                spec.selected_values
+            )
+    for spec in filter_selection:
+        if spec.selected_values:
+            return display_name_by_column.get(spec.column, spec.column), list(
+                spec.selected_values
+            )
+    return None, []
+
+
+def _filter_records_by_series(
+    records: list[dict[str, Any]], series_value: str
+) -> list[dict[str, Any]]:
+    multiseries_col = app_settings.multiseries_id_column
+    series_token = str(series_value)
+    return [row for row in records if str(row.get(multiseries_col)) == series_token]
+
+
+def predictions_for_display_series(
+    predictions: list[dict[str, Any]], display_series: str | None
+) -> list[dict[str, Any]]:
+    """Return prediction rows for one chart series, or all rows if unset."""
+    if display_series is None:
+        return predictions
+    return _filter_records_by_series(predictions, display_series)
+
+
 def get_scoring_data(
     filter_selection: Optional[List[FilterSpec]] = None,
     active_dataset_id: Optional[str] = None,
@@ -483,120 +523,347 @@ def _format_predictions(predictions: list[dict[str, Any]]) -> list[dict[Any, Any
     return data.to_dict(orient="records")  # type: ignore[no-any-return]
 
 
+BAR_COLORS = [
+    "#81FBA5", "#44BFFC", "#909BF5", "#FFFF54",
+    "#5C41FF", "#61DFCF", "#BFFD7E", "#8AC2D5",
+]
+
+_HOVERLABEL = dict(
+    bgcolor="#141414",
+    font=dict(family="DM Sans", size=13, color="#E4E4E4"),
+    bordercolor="#2a2a2a",
+    namelength=-1,
+    align="left",
+)
+
+
+def _feature_group_name(feature: str) -> str:
+    """Original feature name before the first derivation segment.
+
+    DataRobot derived features use ``<Original> <derivation> ...`` — the group
+    is the substring before the first `` (`` (space + opening parenthesis).
+    """
+    paren_idx = feature.find(" (")
+    if paren_idx >= 0:
+        return feature[:paren_idx].strip()
+    return feature.strip()
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i : i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def _rgb_to_hex(red: float, green: float, blue: float) -> str:
+    return f"#{int(red * 255):02x}{int(green * 255):02x}{int(blue * 255):02x}"
+
+
+def _shade_hex(base_hex: str, shade_index: int, group_size: int) -> str:
+    """Return a lighter/darker variant of ``base_hex`` for derivations in one group."""
+    if group_size <= 1:
+        return base_hex
+    red, green, blue = _hex_to_rgb(base_hex)
+    hue, lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
+    # Spread lightness across group members while keeping hue aligned.
+    lightness = 0.32 + (shade_index / (group_size - 1)) * 0.36
+    saturation = min(max(saturation, 0.45), 0.9)
+    red2, green2, blue2 = colorsys.hls_to_rgb(hue, lightness, saturation)
+    return _rgb_to_hex(red2, green2, blue2)
+
+
+def build_feature_color_map(features: list[str] | set[str]) -> dict[str, str]:
+    """Stable feature → color map; derivations of the same original share a hue."""
+    unique_features = sorted(set(features))
+    groups: dict[str, list[str]] = {}
+    for feature in unique_features:
+        groups.setdefault(_feature_group_name(feature), []).append(feature)
+
+    color_map: dict[str, str] = {}
+    for group_index, group_name in enumerate(sorted(groups)):
+        base_color = BAR_COLORS[group_index % len(BAR_COLORS)]
+        group_features = sorted(groups[group_name])
+        for feature_index, feature in enumerate(group_features):
+            color_map[feature] = _shade_hex(base_color, feature_index, len(group_features))
+    return color_map
+
+
+def _feature_bar_color(
+    feature: str, feature_color_map: dict[str, str] | None
+) -> str:
+    if feature_color_map is not None and feature in feature_color_map:
+        return feature_color_map[feature]
+    return BAR_COLORS[abs(hash(feature)) % len(BAR_COLORS)]
+
+_AXIS_STYLE = dict(
+    color="#A2A2A2",
+    showgrid=True,
+    gridcolor="#1e1e1e",
+    linecolor="#2a2a2a",
+    tickfont=dict(family="DM Sans", size=11),
+)
+
+_LAYOUT_BASE = dict(
+    hovermode="x unified",
+    plot_bgcolor="#111111",
+    paper_bgcolor="#0B0B0B",
+    font=dict(family="DM Sans", color="#E4E4E4"),
+    hoverlabel=_HOVERLABEL,
+)
+
+
 def get_forecast_as_plotly_json(
-    scoring_data: list[dict[str, Any]], n_historical_records_to_display: int
+    scoring_data: list[dict[str, Any]],
+    n_historical_records_to_display: int,
+    stacked_bar_df: Optional[pd.DataFrame] = None,
+    predictions: list[dict[str, Any]] | None = None,
+    display_series: str | None = None,
+    feature_color_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Render the forecast chart as a Plotly figure.
 
-    This function takes historical and forecasted data, processes it,
-    and generates a Plotly figure representing the historical data and
-    forecasted predictions. The figure includes lines for the
-    historical data, low and high forecast bounds, and the predicted forecast.
-
-    Parameters
-    ----------
-    scoring_data : list[dict[str, Any]]
-        A list of dictionaries containing the input data for generating predictions.
-    n_historical_records_to_display : int
-        The number of historical records to display in the chart
-
-    Returns
-    -------
-    dict[str, Any]
-        A dictionary representation of the plotly figure.
+    When ``display_series`` is set, history and forecast show that series only.
+    When ``stacked_bar_df`` is provided, returns a combined 2×2 layout with XEMP
+    stacked bar; otherwise a simple single-row chart.
     """
 
     datetime_partition_column = app_settings.datetime_partition_column
     target = app_settings.target
 
-    forecast = pd.DataFrame(
-        [i.model_dump() for i in get_standardized_predictions(scoring_data)]
+    chart_scoring_data = scoring_data
+    chart_predictions = (
+        predictions if predictions is not None else get_predictions(scoring_data)
     )
-    history = _aggregate_scoring_data(scoring_data).tail(
+    if display_series is not None:
+        chart_scoring_data = _filter_records_by_series(scoring_data, display_series)
+        chart_predictions = _filter_records_by_series(chart_predictions, display_series)
+
+    forecast = pd.DataFrame(
+        [i.model_dump() for i in _process_predictions(chart_predictions)]
+    )
+    history = _aggregate_scoring_data(chart_scoring_data).tail(
         n_historical_records_to_display
     )
 
+    actual_col = f"{target} (actual)" if f"{target} (actual)" in history.columns else target
+    series_suffix = f" ({display_series})" if display_series is not None else ""
+    history_name = gettext("{target} History{suffix}").format(
+        target=target, suffix=series_suffix
+    )
+    forecast_name = (
+        gettext("{target} Forecast{suffix}").format(target=target, suffix=series_suffix)
+        if display_series is not None
+        else gettext("Total {target} Forecast").format(target=target)
+    )
+
+    if stacked_bar_df is not None:
+        return _build_combined_figure(
+            history,
+            forecast,
+            stacked_bar_df,
+            actual_col,
+            target,
+            datetime_partition_column,
+            history_name=history_name,
+            forecast_name=forecast_name,
+            feature_color_map=feature_color_map,
+        )
+
+    # ── Fallback: simple single-row chart ────────────────────────────────
     fig = make_subplots(specs=[[{"secondary_y": False}]])
 
-    fig.add_trace(
-        go.Scatter(
-            x=history.timestamp,
-            y=history[target],
-            mode="lines",
-            name=gettext("{target} History").format(target=target),
-            line_shape="spline",
-            line=dict(color="#ff9e00", width=2),
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=forecast["date_id"],
-            y=forecast["low"],
-            mode="lines",
+    fig.add_trace(go.Scatter(
+        x=history.timestamp, y=history[actual_col],
+        mode="lines+markers",
+        name=history_name,
+        line=dict(color="#81FBA5", width=1.5),
+        marker=dict(color="#81FBA5", size=5, symbol="circle"),
+    ))
+    if forecast["low"].notna().any():
+        fig.add_trace(go.Scatter(
+            x=forecast["date_id"], y=forecast["low"], mode="lines",
             name=gettext("Low forecast"),
-            line_shape="spline",
-            line=dict(color="#63b6f9", width=0.5, dash="dot"),
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=forecast["date_id"],
-            y=forecast["high"],
-            mode="lines",
+            line=dict(color="#909BF5", width=1, dash="dot"),
+        ))
+        fig.add_trace(go.Scatter(
+            x=forecast["date_id"], y=forecast["high"], mode="lines",
             name=gettext("High forecast"),
-            line_shape="spline",
-            line=dict(color="#63b6f9", width=0.5, dash="dot"),
-        )
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=forecast["date_id"],
-            y=forecast["prediction"],
-            mode="lines",
-            name=gettext("Total {target} Forecast").format(target=target),
-            line_shape="spline",
-            line=dict(color="#63b6f9", width=2),
-        )
-    )
-
+            line=dict(color="#909BF5", width=1, dash="dot"),
+        ))
+    fig.add_trace(go.Scatter(
+        x=forecast["date_id"], y=forecast["prediction"],
+        mode="lines+markers",
+        name=forecast_name,
+        line=dict(color="#44BFFC", width=1.5),
+        marker=dict(color="#44BFFC", size=5, symbol="circle"),
+    ))
     fig.add_vline(
-        x=history.loc[lambda x: ~pd.isna(x[target]), "timestamp"].max(),
-        line_width=2,
-        line_dash="dash",
-        line_color="gray",
+        x=history.loc[lambda x: ~pd.isna(x[actual_col]), "timestamp"].max(),
+        line_width=1, line_dash="dash", line_color="#2a2a2a",
     )
-
-    fig.update_xaxes(
-        color="#404040",
-        title_text=datetime_partition_column,
-        showgrid=False,
-        linecolor="#adadad",
-    )
-
-    fig.update_yaxes(
-        color="#404040",
-        title_font_size=16,
-        title_text=app_settings.graph_y_axis,
-        linecolor="#adadad",
-    )
-
+    fig.update_xaxes(**_AXIS_STYLE, title_text=datetime_partition_column)
+    fig.update_yaxes(**_AXIS_STYLE, title_font_size=13, title_text=app_settings.graph_y_axis)
     fig.update_layout(
-        height=600,
-        hovermode="x unified",
-        plot_bgcolor="#474747",
+        **_LAYOUT_BASE,
+        height=520,
         showlegend=True,
-        legend=dict(orientation="h", yanchor="top", y=-0.5),
-        margin=dict(l=50, r=50, b=20, t=50, pad=4),
-        xaxis=dict(rangeslider=dict(visible=True), type="date"),
-        title="",
+        legend=dict(orientation="h", yanchor="top", y=-0.18,
+                    font=dict(family="DM Sans", size=12, color="#A2A2A2"),
+                    bgcolor="rgba(0,0,0,0)"),
+        margin=dict(l=50, r=30, b=20, t=30, pad=4),
+        xaxis=dict(rangeslider=dict(visible=True, bgcolor="#111111"), type="date"),
         uniformtext_mode="hide",
     )
-
     fig.update_layout(xaxis=dict(fixedrange=False), yaxis=dict(fixedrange=False))
     fig.update_traces(connectgaps=False)
+    return fig.to_dict()  # type: ignore[no-any-return]
 
+
+def _build_combined_figure(
+    history: pd.DataFrame,
+    forecast: pd.DataFrame,
+    stacked_bar_df: pd.DataFrame,
+    actual_col: str,
+    target: str,
+    datetime_partition_column: str,
+    history_name: str | None = None,
+    forecast_name: str | None = None,
+    feature_color_map: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """2×2 combined layout: history | forecast / empty | stacked bar."""
+
+    if history_name is None:
+        history_name = gettext("{target} History").format(target=target)
+    if forecast_name is None:
+        forecast_name = gettext("Total {target} Forecast").format(target=target)
+
+    n_history = max(history[actual_col].notna().sum(), 1)
+    n_forecast = max(len(forecast), 1)
+    forecast_frac = min(0.78, max(0.50, (n_forecast / (n_history + n_forecast)) * 4))
+    history_frac = 1.0 - forecast_frac
+
+    fig = make_subplots(
+        rows=2, cols=2,
+        column_widths=[history_frac, forecast_frac],
+        row_heights=[0.58, 0.42],
+        shared_xaxes="columns",
+        shared_yaxes="rows",
+        specs=[
+            [{"secondary_y": False}, {"secondary_y": False}],
+            [None, {"secondary_y": False}],
+        ],
+        vertical_spacing=0.04,
+        horizontal_spacing=0.015,
+    )
+
+    # ── Top-left: history (trim to rows with actual values) ─────────────
+    history_actual = history[history[actual_col].notna()]
+    fig.add_trace(go.Scatter(
+        x=history_actual.timestamp, y=history_actual[actual_col],
+        mode="lines+markers",
+        name=history_name,
+        line=dict(color="#81FBA5", width=1.5),
+        marker=dict(color="#81FBA5", size=5, symbol="circle"),
+        legend="legend",
+    ), row=1, col=1)
+
+    # ── Top-right: forecast ──────────────────────────────────────────────
+    if forecast["low"].notna().any():
+        fig.add_trace(go.Scatter(
+            x=forecast["date_id"], y=forecast["low"], mode="lines",
+            name=gettext("Low forecast"),
+            line=dict(color="#909BF5", width=1, dash="dot"),
+            legend="legend",
+        ), row=1, col=2)
+        fig.add_trace(go.Scatter(
+            x=forecast["date_id"], y=forecast["high"], mode="lines",
+            name=gettext("High forecast"),
+            line=dict(color="#909BF5", width=1, dash="dot"),
+            legend="legend",
+        ), row=1, col=2)
+
+    fig.add_trace(go.Scatter(
+        x=forecast["date_id"], y=forecast["prediction"],
+        mode="lines+markers",
+        name=forecast_name,
+        line=dict(color="#44BFFC", width=1.5),
+        marker=dict(color="#44BFFC", size=5, symbol="circle"),
+        legend="legend",
+    ), row=1, col=2)
+
+    # ── Bottom-right: stacked bar (XEMP) ────────────────────────────────
+    for feat in sorted(stacked_bar_df["feature"].unique()):
+        feat_data = stacked_bar_df[stacked_bar_df["feature"] == feat]
+        fig.add_trace(go.Bar(
+            x=feat_data["date_id"],
+            y=feat_data["strength"],
+            name=feat,
+            marker_color=_feature_bar_color(feat, feature_color_map),
+            legend="legend2",
+            showlegend=True,
+            hoverlabel=_HOVERLABEL,
+        ), row=2, col=2)
+
+    # ── Axis styling ─────────────────────────────────────────────────────
+    axis_kw = dict(
+        showgrid=True, gridcolor="#1e1e1e", linecolor="#2a2a2a",
+        color="#A2A2A2", tickfont=dict(family="DM Sans", size=10),
+    )
+    fig.update_xaxes(**axis_kw)
+    fig.update_yaxes(**axis_kw)
+
+    # Y-axis labels
+    fig.update_yaxes(title_text=app_settings.graph_y_axis, title_font_size=12, row=1, col=1)
+    fig.update_yaxes(title_text=gettext("XEMP Strength"), title_font_size=11, row=2, col=2)
+
+    # X-axis types — limit history tick count to avoid cramped rotated labels
+    fig.update_xaxes(type="date", nticks=6, tickangle=-30, row=1, col=1)
+    fig.update_xaxes(type="date", title_text=datetime_partition_column,
+                     title_font_size=11, row=1, col=2)
+
+    # Eyebrow annotations
+    for col, text, xref, xanchor in [
+        (1, "HISTORY", "x domain", "left"),
+        (2, "FORECAST", "x2 domain", "left"),
+    ]:
+        fig.add_annotation(
+            text=text, xref=xref, yref="paper",
+            x=0.01, y=1.01, xanchor=xanchor, yanchor="bottom",
+            showarrow=False,
+            font=dict(family="Fragment Mono, monospace", size=9, color="#81FBA5"),
+        )
+
+    _legend_style = dict(
+        orientation="h",
+        font=dict(family="DM Sans", size=10, color="#A2A2A2"),
+        bgcolor="rgba(0,0,0,0)",
+        tracegroupgap=2,
+    )
+    fig.update_layout(
+        **_LAYOUT_BASE,
+        height=760,
+        barmode="relative",
+        showlegend=True,
+        # top legend: centered above the whole figure, inside the top margin
+        legend=dict(
+            **_legend_style,
+            x=0.5,
+            y=1.01,
+            xanchor="center",
+            yanchor="bottom",
+        ),
+        # bottom legend: centered below the stacked bar, with enough room for wrapped rows
+        legend2=dict(
+            **_legend_style,
+            x=0.5,
+            y=-0.04,
+            xanchor="center",
+            yanchor="top",
+        ),
+        margin=dict(l=50, r=30, b=140, t=55, pad=4),
+        uniformtext_mode="hide",
+    )
+    fig.update_traces(connectgaps=False, selector=dict(type="scatter"))
     return fig.to_dict()  # type: ignore[no-any-return]
 
 
@@ -632,6 +899,26 @@ def get_pred_ex_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
         {"feature": names, "strength": strengths, "value": values}
     )
     return pred_ex_df
+
+
+def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
+    """Returns per-timestep per-feature XEMP strength, grouped for a stacked bar chart."""
+    preds_df = pd.DataFrame(preds)
+    date_col = app_settings.datetime_partition_column
+    rows = []
+    for i in range(1, 4):
+        feature_col = f"EXPLANATION_{i}_FEATURE_NAME"
+        strength_col = f"EXPLANATION_{i}_STRENGTH"
+        if feature_col not in preds_df.columns:
+            continue
+        tmp = preds_df[[date_col, feature_col, strength_col]].rename(
+            columns={date_col: "date_id", feature_col: "feature", strength_col: "strength"}
+        )
+        rows.append(tmp)
+    if not rows:
+        return pd.DataFrame(columns=["date_id", "feature", "strength"])
+    combined = pd.concat(rows, ignore_index=True)
+    return combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
 
 
 def get_llm_summary(predictions: List[dict[str, Any]]) -> ForecastSummary:
