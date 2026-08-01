@@ -3,13 +3,16 @@ import react from "@vitejs/plugin-react";
 import viteYaml from "@modyfi/vite-plugin-yaml";
 import path from "path";
 
-// Dev-server port (Vite) and the static/codespace port used when building the
-// notebook-session base path. Backend (FastAPI) runs on :8080.
-const VITE_DEFAULT_PORT = "8081";
+// Dev-server port (Vite's own default) and the static/codespace port used when
+// building the notebook-session base path. Backend (FastAPI) runs on :8080 —
+// matches the convention used across DataRobot's other app templates (e.g.
+// datarobot-agent-application's frontend_web), which also leave Vite on 5173
+// rather than pairing it adjacent to the backend port.
+const VITE_DEFAULT_PORT = "5173";
 const VITE_STATIC_DEFAULT_PORT = "8080";
 
 let base: string = "";
-// 1. if NOTEBOOK_ID is set, use /notebook-sessions/${NOTEBOOK_ID}/ports/8081/ for dev server
+// 1. if NOTEBOOK_ID is set, use /notebook-sessions/${NOTEBOOK_ID}/ports/5173/ for dev server
 // 2. if NOTEBOOK_ID and NODE_ENV === 'development', use the static codespace port (8080)
 if (process.env.NOTEBOOK_ID && process.env.NODE_ENV === "development") {
   const notebookId = process.env.NOTEBOOK_ID;
@@ -55,7 +58,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 8081,
+    port: 5173,
     host: true,
     allowedHosts: ["0.0.0.0", "localhost", "127.0.0.1", ".datarobot.com"],
     proxy: {

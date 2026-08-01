@@ -49,11 +49,11 @@ from forecastic.schema import (
 
 app = FastAPI()
 
-# Dev: the Vite dev server (http://localhost:8081) calls this API cross-origin with
+# Dev: the Vite dev server (http://localhost:5173) calls this API cross-origin with
 # credentials. Allow that explicit origin (never "*" while credentials are enabled).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8081"],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
