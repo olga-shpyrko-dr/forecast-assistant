@@ -370,6 +370,12 @@ This template ships **two** front-ends — a Streamlit app (`frontend/`) and a R
 - Streamlit: `source set_env.sh && cd frontend && streamlit run app.py`
 - React: `cd frontend_react/react_src && yarn dev` (dev server proxies API calls to the FastAPI backend; see `frontend_react/react_src/src/api/apiClient.ts`)
 
+> **📡 Ports, if running in a fresh DataRobot Codespace:** these dev servers bind to specific ports, and a new Codespace won't have them forwarded/enabled by default — you'll need to enable each one before it's reachable from your browser:
+> - Streamlit: **8501**
+> - React: **8080** (FastAPI backend, `uvicorn forecastic.rest_api:app --port 8080`) **and** **5173** (Vite dev server, `yarn dev`) — you browse to 5173; it proxies API calls to 8080 internally.
+>
+> Only enable the port(s) for the mode you're actually running.
+
 **To test both front-ends side by side** instead of toggling one stack back and forth, use a second Pulumi stack:
 ```bash
 pulumi stack init react-test   # or any name
