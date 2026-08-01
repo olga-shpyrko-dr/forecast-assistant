@@ -182,7 +182,14 @@ def _get_scoring_data(active_dataset_id: Optional[str] = None) -> pd.DataFrame:
         configured at deploy time (``scoring_dataset_id``) is used.
     """
     dataset_id = active_dataset_id or scoring_dataset_id
-    return dr.Dataset.get(dataset_id).get_as_dataframe()
+    df = dr.Dataset.get(dataset_id).get_as_dataframe()
+    # Batch-prediction-style scoring data names the historic target column
+    # "{target} (actual)" instead of the plain target name. Normalize it here so
+    # every consumer (REST /scoringData response included) sees a plain target key.
+    actual_col = f"{app_settings.target} (actual)"
+    if actual_col in df.columns:
+        df = df.rename(columns={actual_col: app_settings.target})
+    return df
 
 
 def get_scoring_data(
@@ -301,39 +308,53 @@ def _process_predictions(predictions: list[dict[str, Any]]) -> list[PredictionRo
 
     data = pd.DataFrame(predictions)
 
-    prediction_interval = f"{app_settings.prediction_interval:.0f}"
     bound_at_zero = app_settings.lower_bound_forecast_at_0
-
     target = dr.Project.get(app_settings.project_id).target
-
     date_id = app_settings.datetime_partition_column
     series_id = app_settings.multiseries_id_column
-    target = f"{target}_PREDICTION"
-    slim_predictions = data[[series_id, date_id, target]].rename(
-        columns={date_id: "date_id"}
-    )
+    target_pred_col = f"{target}_PREDICTION"
 
-    percentile_prefix = f"PREDICTION_{prediction_interval}_PERCENTILE"
+    if series_id is not None:
+        slim_predictions = data[[series_id, date_id, target_pred_col]].rename(
+            columns={date_id: "date_id"}
+        )
+    else:
+        slim_predictions = data[[date_id, target_pred_col]].rename(
+            columns={date_id: "date_id"}
+        )
 
-    intervals = data[[c for c in data.columns if percentile_prefix in c]]
+    has_intervals = False
+    if app_settings.prediction_interval is not None:
+        prediction_interval = f"{app_settings.prediction_interval:.0f}"
+        percentile_prefix = f"PREDICTION_{prediction_interval}_PERCENTILE"
+        has_intervals = f"{percentile_prefix}_LOW" in data.columns
 
-    clean_predictions = pd.concat([slim_predictions, intervals], axis=1)
-
-    clean_predictions = (
-        clean_predictions.rename(
+    if has_intervals:
+        intervals = data[[c for c in data.columns if percentile_prefix in c]]
+        clean_predictions = pd.concat([slim_predictions, intervals], axis=1).rename(
             columns={
-                target: "prediction",
+                target_pred_col: "prediction",
                 f"{percentile_prefix}_LOW": "low",
                 f"{percentile_prefix}_HIGH": "high",
             }
         )
-        .groupby("date_id")
-        .sum()
-        .reset_index()
-    )
+    else:
+        clean_predictions = slim_predictions.rename(
+            columns={target_pred_col: "prediction"}
+        )
+
+    clean_predictions = clean_predictions.groupby("date_id").sum().reset_index()
+
+    if not has_intervals:
+        clean_predictions["low"] = None
+        clean_predictions["high"] = None
+
     if bound_at_zero:
-        bounds = ["prediction", "low", "high"]
+        bounds = ["prediction"]
+        if has_intervals:
+            bounds += ["low", "high"]
         clean_predictions[bounds] = clean_predictions[bounds].clip(lower=0)
+
     return [PredictionRow(**i) for i in clean_predictions.to_dict(orient="records")]
 
 
@@ -355,24 +376,32 @@ def _format_predictions(predictions: list[dict[str, Any]]) -> list[dict[Any, Any
     target = dr.Project.get(app_settings.project_id).target
     multiseries_id_column = app_settings.multiseries_id_column
     date_id = app_settings.datetime_partition_column
-    prediction_interval = f"{app_settings.prediction_interval:.0f}"
-    percentile_prefix = f"PREDICTION_{prediction_interval}_PERCENTILE"
 
     data["timestamp"] = data[date_id]
     data["prediction"] = data[f"{target}_PREDICTION"]
-    data["seriesId"] = data[multiseries_id_column]
+    if multiseries_id_column is not None:
+        data["seriesId"] = data[multiseries_id_column]
     data["forecastDistance"] = data["FORECAST_DISTANCE"]
     data["forecastPoint"] = data["FORECAST_POINT"]
 
-    data["predictionIntervals"] = data.apply(
-        lambda x: {
-            prediction_interval: {
-                "low": x[f"{percentile_prefix}_LOW"],
-                "high": x[f"{percentile_prefix}_HIGH"],
-            }
-        },
-        axis=1,
-    )
+    has_intervals = False
+    if app_settings.prediction_interval is not None:
+        prediction_interval = f"{app_settings.prediction_interval:.0f}"
+        percentile_prefix = f"PREDICTION_{prediction_interval}_PERCENTILE"
+        has_intervals = f"{percentile_prefix}_LOW" in data.columns
+
+    if has_intervals:
+        data["predictionIntervals"] = data.apply(
+            lambda x: {
+                prediction_interval: {
+                    "low": x[f"{percentile_prefix}_LOW"],
+                    "high": x[f"{percentile_prefix}_HIGH"],
+                }
+            },
+            axis=1,
+        )
+    else:
+        data["predictionIntervals"] = None
 
     data["predictionExplanations"] = data.apply(
         lambda x: [
