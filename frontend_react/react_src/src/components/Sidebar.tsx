@@ -5,8 +5,18 @@ import { faArrowUpRightFromSquare } from "@fortawesome/free-solid-svg-icons/faAr
 import { faArrowsRotate } from "@fortawesome/free-solid-svg-icons/faArrowsRotate";
 import { faShareNodes } from "@fortawesome/free-solid-svg-icons/faShareNodes";
 import { Button } from "~/components/ui/button";
+import { Switch } from "~/components/ui/switch";
+import { Label } from "~/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import ShareModal from "~/components/ShareModal";
 import DatasetSelectorModal from "~/components/DatasetSelectorModal";
+import useDatasetVersions from "~/hooks/useDatasetVersions";
 import SidebarMenu, {
   type SidebarMenuOptionType,
 } from "~/components/ui-custom/SidebarMenu";
@@ -129,13 +139,23 @@ const ForecastSettings = () => {
     inputDateFormat,
     outputDateFormat,
     activeDatasetId,
+    selectedVersionId,
+    setSelectedVersionId,
+    showLlmCommentary,
+    toggleShowLlmCommentary,
     setFilters,
     setForecastData,
     setForecastDataLoading,
     setNaturalLanguageSummary,
     setNaturalLanguageSummaryLoading,
   } = useContext(AppStateContext);
-  const { datetime_partition_column: dateColumn } = appSettings;
+  const { versions: datasetVersions } = useDatasetVersions(
+    activeDatasetId || undefined,
+  );
+  const {
+    datetime_partition_column: dateColumn,
+    llm_commentary_available: llmCommentaryAvailable,
+  } = appSettings;
   const { pathname } = useLocation();
 
   const isCustomDatasetActive = Boolean(activeDatasetId);
@@ -175,7 +195,9 @@ const ForecastSettings = () => {
         inputDateFormat,
       });
       setForecastData(data, forecastSeriesIdsCount);
-      getSummary(data);
+      if (llmCommentaryAvailable && showLlmCommentary) {
+        getSummary(data);
+      }
     } catch (error) {
       console.error(error);
     }
@@ -215,6 +237,29 @@ const ForecastSettings = () => {
         </p>
       </div>
       <DatasetSelectorModal />
+      {datasetVersions.length > 1 ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="version-select">Prediction Timestamp</Label>
+          <Select
+            value={selectedVersionId || "__latest__"}
+            onValueChange={(value) =>
+              setSelectedVersionId(value === "__latest__" ? null : value)
+            }
+            disabled={inputsDisabled}
+          >
+            <SelectTrigger id="version-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {datasetVersions.map((version) => (
+                <SelectItem key={version.version_id} value={version.version_id}>
+                  {version.is_latest ? `${version.label} (latest)` : version.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       {!isCustomDatasetActive &&
         filterOptions.map((filter) => {
           const items = filters[filter.name] || [];
@@ -242,6 +287,16 @@ const ForecastSettings = () => {
           );
         })}
 
+      <div className="flex items-center gap-2">
+        <Switch
+          id="show-llm-commentary"
+          checked={showLlmCommentary && llmCommentaryAvailable}
+          disabled={!llmCommentaryAvailable}
+          onCheckedChange={toggleShowLlmCommentary}
+        />
+        <Label htmlFor="show-llm-commentary">Show AI commentary</Label>
+      </div>
+
       <div>
         <Button
           variant="outline"
@@ -259,10 +314,10 @@ const ForecastSettings = () => {
 const BehindTheScenes = () => {
   const { appSettings, runtimeAttributes, activeDatasetId, activeDatasetName } =
     useContext(AppStateContext);
-  const { target, scoring_dataset_id, model_name } = appSettings;
+  const { target, model_name } = appSettings;
   const predictionDatasetLabel = activeDatasetId
     ? activeDatasetName
-    : scoring_dataset_id || "Scoring dataset";
+    : "Scoring dataset";
   const {
     app_creator_email: created_by,
     app_latest_created_date: created_at,

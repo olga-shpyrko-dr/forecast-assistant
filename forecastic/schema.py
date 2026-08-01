@@ -123,6 +123,15 @@ class AppSettings(BaseModel):
     page_title: str
     headline_prompt: str
     llm_commentary_enabled: bool = True
+    llm_commentary_available: bool = Field(
+        default=True,
+        description=(
+            "Computed at request time: whether LLM commentary can actually be "
+            "generated right now (config allows it and a generative deployment "
+            "is reachable). Distinct from llm_commentary_enabled, which is the "
+            "static per-deploy admin toggle."
+        ),
+    )
     model_config = ConfigDict(protected_namespaces=())
 
     @classmethod

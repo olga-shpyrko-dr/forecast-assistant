@@ -28,6 +28,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import LoadingBackdrop from "~/components/ui-custom/LoadingBackdrop";
 import ExplanationsLineChart from "~/components/ExplanationsLineChart";
 import XEMPLineChart from "~/components/XEMPLineChart";
@@ -88,8 +95,13 @@ const ForecastSection = () => {
     addPredictionFeature,
     removePredictionFeature,
     resetPredictionFeatures,
+    seriesOptions,
+    selectedSeriesId,
+    setSelectedSeriesId,
   } = useContext(AppStateContext);
-  const { target: targetColumn } = appSettings;
+  const { target: targetColumn, prediction_interval: predictionInterval } =
+    appSettings;
+  const intervalsAvailable = predictionInterval !== null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -99,32 +111,57 @@ const ForecastSection = () => {
           {`Visualize the forecast of “${targetColumn}” and optionally add layers of
           additional insight.`}
         </p>
-        <div className="flex flex-col gap-4 p-4 rounded border">
-          <div className="flex flex-col gap-2">
-            <TogglerWithDescription
-              id="confidence-interval"
-              checked={confidenceIntervalEnabled}
-              labelText="Confidence interval"
-              subText="Show the confidence interval of the forecasted values."
-              onChange={toggleConfidenceInterval}
-            />
-            {confidenceIntervalEnabled ? (
-              <div className="flex flex-col gap-4 items-start ml-[3.25rem]">
-                <div>
-                  <Input value={80} disabled />
-                </div>
-                {forecastData.length === 0 && !forecastDataLoading ? (
-                  <Alert>
-                    <FontAwesomeIcon icon={faExclamationTriangle} />
-                    <AlertTitle>No forecast data available</AlertTitle>
-                    <AlertDescription className="text-gray-400">
-                      Please calculate the forecast first.
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
-              </div>
-            ) : null}
+        {seriesOptions.length > 1 ? (
+          <div className="flex items-center gap-2 py-2">
+            <Label htmlFor="series-select">Series</Label>
+            <Select
+              value={selectedSeriesId || "__all__"}
+              onValueChange={(value) =>
+                setSelectedSeriesId(value === "__all__" ? null : value)
+              }
+            >
+              <SelectTrigger id="series-select" className="w-[220px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All series (combined)</SelectItem>
+                {seriesOptions.map((seriesId) => (
+                  <SelectItem key={seriesId} value={seriesId}>
+                    {seriesId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+        ) : null}
+        <div className="flex flex-col gap-4 p-4 rounded border">
+          {intervalsAvailable ? (
+            <div className="flex flex-col gap-2">
+              <TogglerWithDescription
+                id="confidence-interval"
+                checked={confidenceIntervalEnabled}
+                labelText="Confidence interval"
+                subText="Show the confidence interval of the forecasted values."
+                onChange={toggleConfidenceInterval}
+              />
+              {confidenceIntervalEnabled ? (
+                <div className="flex flex-col gap-4 items-start ml-[3.25rem]">
+                  <div>
+                    <Input value={predictionInterval} disabled />
+                  </div>
+                  {forecastData.length === 0 && !forecastDataLoading ? (
+                    <Alert>
+                      <FontAwesomeIcon icon={faExclamationTriangle} />
+                      <AlertTitle>No forecast data available</AlertTitle>
+                      <AlertDescription className="text-gray-400">
+                        Please calculate the forecast first.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="flex flex-col gap-2">
             <TogglerWithDescription
               id="prediction-explanations"
@@ -285,8 +322,11 @@ const FeaturesDropdown = ({
 };
 
 const XEMPExplanations = () => {
-  const { forecastData, doesDateContainTime, appSettings } =
-    useContext(AppStateContext);
+  const {
+    visibleForecastData: forecastData,
+    doesDateContainTime,
+    appSettings,
+  } = useContext(AppStateContext);
   const {
     timestep_settings: { timeStep, timeUnit },
   } = appSettings;

@@ -37,14 +37,14 @@ export type AppSettings = {
   graph_y_axis: string;
   important_features: ImportantFeature[];
   lower_bound_forecast_at_0: boolean;
+  llm_commentary_available: boolean;
   model_id: string;
   model_name: string;
-  multiseries_id_column: string[];
+  multiseries_id_column: string | null;
   page_title: string;
   page_description: string;
-  prediction_interval: string;
+  prediction_interval: number | null;
   project_id: string;
-  scoring_dataset_id: string;
   target: string;
   timestep_settings: {
     timeStep: 1;

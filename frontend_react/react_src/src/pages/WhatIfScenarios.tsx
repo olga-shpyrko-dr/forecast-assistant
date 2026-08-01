@@ -84,7 +84,7 @@ const WhatIfScenarios = () => {
   } = appSettings;
 
   const isPageEnabled = useMemo(() => {
-    const firstMultiseriesId = multiseriesIdColumn?.[0] || "";
+    const firstMultiseriesId = multiseriesIdColumn || "";
     // If there is no forecast data, the page should be disabled
     if (forecastData.length < 1) {
       return false;

@@ -33,6 +33,7 @@ from forecastic.api import (
     get_llm_summary,
     get_runtime_attributes,
     get_scoring_data,
+    get_scoring_dataset_versions,
     list_registry_datasets,
     share_access,
     upload_dataset_to_registry,
@@ -78,8 +79,16 @@ async def get_filters_endpoint() -> List[MultiSelectFilter]:
 async def get_scoring_data_endpoint(
     filter_selection: Optional[List[FilterSpec]] = None,
     active_dataset_id: Optional[str] = None,
+    version_id: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    return get_scoring_data(filter_selection, active_dataset_id)
+    return get_scoring_data(filter_selection, active_dataset_id, version_id)
+
+
+@app.get("/scoringDataVersions")
+async def get_scoring_data_versions_endpoint(
+    active_dataset_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    return get_scoring_dataset_versions(active_dataset_id)
 
 
 @app.get("/registryDatasets")

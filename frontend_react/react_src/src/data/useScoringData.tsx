@@ -14,6 +14,7 @@ type Props = {
   dateColumn: string;
   inputDateFormat: string;
   activeDatasetId?: string;
+  versionId?: string;
 };
 
 type ReturnType = {
@@ -29,6 +30,7 @@ const useScoringData = ({
   dateColumn,
   inputDateFormat,
   activeDatasetId,
+  versionId,
 }: Props): ReturnType => {
   const [fetchedData, setFetchedData] = useState<ScoringData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +39,7 @@ const useScoringData = ({
     const fetchData = async () => {
       try {
         setLoading(true);
-        const data = await getScoringData(activeDatasetId);
+        const data = await getScoringData(activeDatasetId, versionId);
 
         // Format the date string
         const newData = data.map((d) => {
@@ -59,7 +61,7 @@ const useScoringData = ({
     if (dateColumn && inputDateFormat) {
       fetchData();
     }
-  }, [dateColumn, inputDateFormat, activeDatasetId]);
+  }, [dateColumn, inputDateFormat, activeDatasetId, versionId]);
 
   const { allData, filterOptions, datasetColumns } = useMemo(() => {
     if (!fetchedData.length) {

@@ -1,4 +1,10 @@
-import React, { useReducer, createContext, useMemo } from "react";
+import React, {
+  useReducer,
+  createContext,
+  useMemo,
+  useState,
+  useEffect,
+} from "react";
 import { nanoid } from "nanoid";
 import useScoringData from "~/data/useScoringData";
 import useConfigs, {
@@ -26,14 +32,9 @@ export type PredictionExplanation = {
 export type ForecastData = {
   prediction: number;
   timestamp: string;
-  predictionIntervals: {
-    "80": {
-      low: number;
-      high: number;
-    };
-  };
+  predictionIntervals: Record<string, { low: number; high: number }> | null;
   predictionExplanations: PredictionExplanation[];
-  seriesId: string;
+  seriesId?: string;
 };
 
 export type Feature = {
@@ -84,17 +85,26 @@ type AppState = {
   forecastData: ForecastData[];
   forecastSeriesIdsCount: number;
   forecastDataLoading: boolean;
+  seriesOptions: string[];
+  selectedSeriesId: string | null;
+  setSelectedSeriesId: (id: string | null) => void;
+  visibleForecastData: ForecastData[];
+  visibleScoringData: ScoringData[];
   naturalLanguageSummary: string;
   naturalLanguageSummaryLoading: boolean;
   selectedFeatures: Feature[];
   confidenceIntervalEnabled: boolean;
   predictionExplanationsEnabled: boolean;
+  showLlmCommentary: boolean;
   whatIfScenarios: WhatIfScenario[];
   activeWhatIfScenarioId: string | null;
   activeDatasetId: string;
   activeDatasetName: string;
+  selectedVersionId: string | null;
+  setSelectedVersionId: (id: string | null) => void;
   toggleConfidenceInterval: () => void;
   togglePredictionExplanations: () => void;
+  toggleShowLlmCommentary: () => void;
   setFilters: (filters: Filters) => void;
   setActiveDataset: (id: string, name: string) => void;
   setForecastData: (data: ForecastData[], seriesIdsCount?: number) => void;
@@ -119,6 +129,7 @@ type AppState = {
 type Action =
   | { type: "TOGGLE_CONFIDENCE_INTERVAL" }
   | { type: "TOGGLE_PREDICTION_EXPLANATIONS" }
+  | { type: "TOGGLE_SHOW_LLM_COMMENTARY" }
   | { type: "SET_FILTERS"; payload: Filters }
   | {
       type: "SET_FORECAST_DATA";
@@ -150,7 +161,8 @@ type Action =
       payload: { id: string; loading: boolean };
     }
   | { type: "SET_ACTIVE_WHAT_IF_SCENARIO_ID"; payload: string | null }
-  | { type: "SET_ACTIVE_DATASET"; payload: { id: string; name: string } };
+  | { type: "SET_ACTIVE_DATASET"; payload: { id: string; name: string } }
+  | { type: "SET_SELECTED_VERSION_ID"; payload: string | null };
 
 const INITIAL_STATE: AppState = {
   appSettings: {} as AppSettings,
@@ -168,17 +180,26 @@ const INITIAL_STATE: AppState = {
   forecastData: [],
   forecastSeriesIdsCount: 0,
   forecastDataLoading: false,
+  seriesOptions: [],
+  selectedSeriesId: null,
+  setSelectedSeriesId: () => {},
+  visibleForecastData: [],
+  visibleScoringData: [],
   naturalLanguageSummary: "",
   naturalLanguageSummaryLoading: false,
   selectedFeatures: [],
   confidenceIntervalEnabled: false,
   predictionExplanationsEnabled: false,
+  showLlmCommentary: true,
   whatIfScenarios: [],
   activeWhatIfScenarioId: null,
   activeDatasetId: "",
   activeDatasetName: "",
+  selectedVersionId: null,
+  setSelectedVersionId: () => {},
   toggleConfidenceInterval: () => {},
   togglePredictionExplanations: () => {},
+  toggleShowLlmCommentary: () => {},
   setFilters: () => {},
   setActiveDataset: () => {},
   setForecastData: () => {},
@@ -208,6 +229,11 @@ const reducer = (state: AppState, action: Action) => {
       return {
         ...state,
         predictionExplanationsEnabled: !state.predictionExplanationsEnabled,
+      };
+    case "TOGGLE_SHOW_LLM_COMMENTARY":
+      return {
+        ...state,
+        showLlmCommentary: !state.showLlmCommentary,
       };
     case "SET_FILTERS":
       return {
@@ -344,6 +370,16 @@ const reducer = (state: AppState, action: Action) => {
         naturalLanguageSummaryLoading: false,
         whatIfScenarios: [],
         activeWhatIfScenarioId: null,
+        // Dataset versions are specific to a dataset; reset back to "latest".
+        selectedVersionId: null,
+      };
+    case "SET_SELECTED_VERSION_ID":
+      return {
+        ...state,
+        selectedVersionId: action.payload,
+        forecastData: [],
+        naturalLanguageSummary: "",
+        naturalLanguageSummaryLoading: false,
       };
     default:
       return state;
@@ -369,6 +405,7 @@ export const AppStateProvider = ({
     filterable_categories,
     important_features,
     datetime_partition_column: dateColumn,
+    multiseries_id_column: multiseriesIdColumn,
   } = appSettings;
 
   const { inputDateFormat, outputDateFormat, doesDateContainTime } =
@@ -411,7 +448,38 @@ export const AppStateProvider = ({
     dateColumn,
     inputDateFormat,
     activeDatasetId: state.activeDatasetId,
+    versionId: state.selectedVersionId || undefined,
   });
+
+  const [selectedSeriesId, setSelectedSeriesId] = useState<string | null>(
+    null,
+  );
+
+  const seriesOptions = useMemo(() => {
+    const ids = new Set<string>();
+    state.forecastData.forEach((d) => {
+      if (d.seriesId !== undefined) ids.add(d.seriesId);
+    });
+    return Array.from(ids).sort();
+  }, [state.forecastData]);
+
+  useEffect(() => {
+    if (selectedSeriesId && !seriesOptions.includes(selectedSeriesId)) {
+      setSelectedSeriesId(null);
+    }
+  }, [seriesOptions, selectedSeriesId]);
+
+  const visibleForecastData = useMemo(() => {
+    if (!selectedSeriesId) return state.forecastData;
+    return state.forecastData.filter((d) => d.seriesId === selectedSeriesId);
+  }, [state.forecastData, selectedSeriesId]);
+
+  const visibleScoringData = useMemo(() => {
+    if (!selectedSeriesId || !multiseriesIdColumn) return scoringData || [];
+    return (scoringData || []).filter(
+      (d) => String(d[multiseriesIdColumn]) === selectedSeriesId,
+    );
+  }, [scoringData, selectedSeriesId, multiseriesIdColumn]);
 
   const importantFeaturesWithColors = useMemo<Feature[]>(() => {
     const featuresWithColors = assignColorsToFeatures(important_features || []);
@@ -434,12 +502,20 @@ export const AppStateProvider = ({
     dispatch({ type: "TOGGLE_PREDICTION_EXPLANATIONS" });
   };
 
+  const toggleShowLlmCommentary = () => {
+    dispatch({ type: "TOGGLE_SHOW_LLM_COMMENTARY" });
+  };
+
   const setFilters = (filters: Filters) => {
     dispatch({ type: "SET_FILTERS", payload: filters });
   };
 
   const setActiveDataset = (id: string, name: string) => {
     dispatch({ type: "SET_ACTIVE_DATASET", payload: { id, name } });
+  };
+
+  const setSelectedVersionId = (id: string | null) => {
+    dispatch({ type: "SET_SELECTED_VERSION_ID", payload: id });
   };
 
   const setForecastData = (data: ForecastData[], seriesIdsCount?: number) => {
@@ -524,13 +600,20 @@ export const AppStateProvider = ({
         scoringDataLoading,
         datasetColumns,
         filterOptions,
+        seriesOptions,
+        selectedSeriesId,
+        setSelectedSeriesId,
+        visibleForecastData,
+        visibleScoringData,
         inputDateFormat,
         outputDateFormat,
         doesDateContainTime,
         toggleConfidenceInterval,
         togglePredictionExplanations,
+        toggleShowLlmCommentary,
         setFilters,
         setActiveDataset,
+        setSelectedVersionId,
         importantFeaturesWithColors,
         setForecastData,
         setForecastDataLoading,

@@ -56,8 +56,8 @@ const ExplanationsLineChart = () => {
 
   const {
     appSettings,
-    scoringData,
-    forecastData,
+    visibleScoringData: scoringData,
+    visibleForecastData: forecastData,
     doesDateContainTime,
     confidenceIntervalEnabled,
     predictionExplanationsEnabled,
@@ -68,7 +68,12 @@ const ExplanationsLineChart = () => {
     datetime_partition_column: dateColumn,
     target: targetColumn,
     graph_y_axis,
+    prediction_interval: predictionInterval,
   } = appSettings;
+
+  const intervalKey =
+    predictionInterval != null ? String(predictionInterval) : null;
+  const intervalsAvailable = intervalKey !== null;
 
   const getXValue = (d: ScoringData) =>
     d?.[dateColumn] ? momentDate(d[dateColumn]) : null;
@@ -86,13 +91,19 @@ const ExplanationsLineChart = () => {
   const getForecastYValue = useCallback((d: ForecastData) => d.prediction, []);
 
   const getForecastYValueLow = useCallback(
-    (d: ForecastData) => d.predictionIntervals["80"].low,
-    [],
+    (d: ForecastData) =>
+      intervalKey && d.predictionIntervals
+        ? d.predictionIntervals[intervalKey].low
+        : d.prediction,
+    [intervalKey],
   );
 
   const getForecastYValueHigh = useCallback(
-    (d: ForecastData) => d.predictionIntervals["80"].high,
-    [],
+    (d: ForecastData) =>
+      intervalKey && d.predictionIntervals
+        ? d.predictionIntervals[intervalKey].high
+        : d.prediction,
+    [intervalKey],
   );
 
   const scoringBisectDate = useMemo(
@@ -150,26 +161,29 @@ const ExplanationsLineChart = () => {
           acc[key] = {
             ...d,
             prediction: 0,
-            predictionIntervals: {
-              "80": {
-                low: 0,
-                high: 0,
-              },
-            },
+            predictionIntervals: intervalKey
+              ? { [intervalKey]: { low: 0, high: 0 } }
+              : null,
           };
         }
         acc[key].prediction += d.prediction;
-        acc[key].predictionIntervals["80"].low +=
-          d.predictionIntervals["80"].low;
-        acc[key].predictionIntervals["80"].high +=
-          d.predictionIntervals["80"].high;
+        if (
+          intervalKey &&
+          acc[key].predictionIntervals &&
+          d.predictionIntervals
+        ) {
+          acc[key].predictionIntervals[intervalKey].low +=
+            d.predictionIntervals[intervalKey].low;
+          acc[key].predictionIntervals[intervalKey].high +=
+            d.predictionIntervals[intervalKey].high;
+        }
         return acc;
       },
       {} as Record<string, ForecastData>,
     );
 
     return Object.values(groupedData);
-  }, [forecastData]);
+  }, [forecastData, intervalKey]);
 
   const [filteredScoringData, setFilteredScoringData] =
     useState<ScoringData[]>(groupedScoringData);
@@ -477,8 +491,9 @@ const ExplanationsLineChart = () => {
   return (
     <div className="relative h-[550px]">
       <ChartLegend
-        confidenceIntervalEnabled={confidenceIntervalEnabled}
+        confidenceIntervalEnabled={confidenceIntervalEnabled && intervalsAvailable}
         predictionExplanationsEnabled={predictionExplanationsEnabled}
+        predictionInterval={predictionInterval}
       />
       <svg ref={ref} width="100%" height="520px">
         <Group left={margin.left} top={margin.top}>
@@ -572,7 +587,7 @@ const ExplanationsLineChart = () => {
             }
             strokeWidth={3}
           />
-          {confidenceIntervalEnabled ? (
+          {confidenceIntervalEnabled && intervalsAvailable ? (
             <>
               <LinePath
                 data={filteredForecastData}
@@ -662,6 +677,7 @@ const ExplanationsLineChart = () => {
           dateColumn={dateColumn}
           targetColumn={targetColumn}
           doesDateContainTime={doesDateContainTime}
+          intervalKey={intervalKey}
         />
       ) : null}
 
@@ -677,9 +693,11 @@ const ExplanationsLineChart = () => {
 const ChartLegend = ({
   confidenceIntervalEnabled,
   predictionExplanationsEnabled,
+  predictionInterval,
 }: {
   confidenceIntervalEnabled: boolean;
   predictionExplanationsEnabled: boolean;
+  predictionInterval?: number | null;
 }) => {
   return (
     <div className="flex gap-2.5 h-[30px] text-gray-400">
@@ -705,7 +723,7 @@ const ChartLegend = ({
       {confidenceIntervalEnabled ? (
         <span className="flex gap-2 items-center">
           <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
-          <span>80% confidence</span>
+          <span>{predictionInterval}% confidence</span>
         </span>
       ) : null}
     </div>
@@ -751,6 +769,7 @@ const TooltipContent = ({
   dateColumn,
   targetColumn,
   doesDateContainTime = false,
+  intervalKey,
 }: {
   tooltipData: ScoringData | ForecastData;
   tooltipLeft: number;
@@ -759,6 +778,7 @@ const TooltipContent = ({
   dateColumn: string;
   targetColumn: string;
   doesDateContainTime: boolean;
+  intervalKey: string | null;
 }) => {
   const isScoringData = targetColumn in tooltipData;
 
@@ -817,28 +837,32 @@ const TooltipContent = ({
           </span>
           <span>{(tooltipData as ForecastData).prediction.toFixed(2)}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="flex gap-2 items-center">
-            <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
-            <span>+80% confidence</span>
-          </span>
-          <span>
-            {(tooltipData as ForecastData).predictionIntervals[
-              "80"
-            ].high.toFixed(2)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="flex gap-2 items-center">
-            <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
-            <span>-80% confidence</span>
-          </span>
-          <span>
-            {(tooltipData as ForecastData).predictionIntervals[
-              "80"
-            ].low.toFixed(2)}
-          </span>
-        </div>
+        {intervalKey && (tooltipData as ForecastData).predictionIntervals ? (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="flex gap-2 items-center">
+                <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
+                <span>+{intervalKey}% confidence</span>
+              </span>
+              <span>
+                {(tooltipData as ForecastData).predictionIntervals![
+                  intervalKey
+                ].high.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="flex gap-2 items-center">
+                <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
+                <span>-{intervalKey}% confidence</span>
+              </span>
+              <span>
+                {(tooltipData as ForecastData).predictionIntervals![
+                  intervalKey
+                ].low.toFixed(2)}
+              </span>
+            </div>
+          </>
+        ) : null}
       </div>
       <TooltipFeaturesContent
         tooltipData={tooltipData as ForecastData}

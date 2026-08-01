@@ -34,7 +34,9 @@ const calculatePredictions = async ({
   const seriesIds = new Set<string>();
   const formattedData = data.map((d) => {
     const timestamp = formatDateString(d.timestamp, inputDateFormat);
-    seriesIds.add(d.seriesId);
+    if (d.seriesId !== undefined) {
+      seriesIds.add(d.seriesId);
+    }
 
     return {
       ...d,
@@ -44,7 +46,7 @@ const calculatePredictions = async ({
 
   return {
     data: formattedData,
-    forecastSeriesIdsCount: seriesIds.size,
+    forecastSeriesIdsCount: seriesIds.size || 1,
   };
 };
 

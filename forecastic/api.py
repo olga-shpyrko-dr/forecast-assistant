@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import functools
+import io
 import itertools
 import json
 import sys
@@ -121,7 +122,19 @@ def _get_completion(
 
 
 def get_app_settings() -> AppSettings:
-    return app_settings
+    return app_settings.model_copy(
+        update={"llm_commentary_available": is_llm_commentary_available()}
+    )
+
+
+def is_llm_commentary_available() -> bool:
+    """True when app config allows LLM commentary and a generative deployment exists."""
+    if not app_settings.llm_commentary_enabled:
+        return False
+    try:
+        return bool(GenerativeDeployment().id)
+    except ValidationError:
+        return False
 
 
 def _get_app_urls() -> AppUrls:
@@ -172,7 +185,9 @@ def get_runtime_attributes() -> AppRuntimeAttributes:
 # Small cache: user-selected datasets (up to REGISTRY_DATASET_SIZE_CUTOFF each) key
 # this cache, so keep the resident-memory ceiling modest.
 @functools.lru_cache(maxsize=4)
-def _get_scoring_data(active_dataset_id: Optional[str] = None) -> pd.DataFrame:
+def _get_scoring_data(
+    active_dataset_id: Optional[str] = None, version_id: Optional[str] = None
+) -> pd.DataFrame:
     """Get the scoring data from DataRobot.
 
     Parameters
@@ -180,9 +195,17 @@ def _get_scoring_data(active_dataset_id: Optional[str] = None) -> pd.DataFrame:
     active_dataset_id : Optional[str]
         Data Registry dataset id to score against. When None, the scoring dataset
         configured at deploy time (``scoring_dataset_id``) is used.
+    version_id : Optional[str]
+        Specific dataset version to replay. When None, the latest version is used.
     """
     dataset_id = active_dataset_id or scoring_dataset_id
-    df = dr.Dataset.get(dataset_id).get_as_dataframe()
+    if version_id is None:
+        df = dr.Dataset.get(dataset_id).get_as_dataframe()
+    else:
+        response = dr.Client().get(
+            f"datasets/{dataset_id}/versions/{version_id}/file/", stream=True
+        )
+        df = pd.read_csv(io.StringIO(response.text))
     # Batch-prediction-style scoring data names the historic target column
     # "{target} (actual)" instead of the plain target name. Normalize it here so
     # every consumer (REST /scoringData response included) sees a plain target key.
@@ -192,9 +215,46 @@ def _get_scoring_data(active_dataset_id: Optional[str] = None) -> pd.DataFrame:
     return df
 
 
+def get_scoring_dataset_versions(
+    active_dataset_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Return all versions of a scoring dataset, newest first.
+
+    Each entry: {version_id, created_at, label, is_latest}.
+    """
+    dataset_id = active_dataset_id or scoring_dataset_id
+    response = dr.Client().get(f"datasets/{dataset_id}/versions/").json()
+    versions = sorted(
+        response.get("data", []),
+        key=lambda v: v.get("creationDate", ""),
+        reverse=True,
+    )
+    result = []
+    for v in versions:
+        created = v.get("creationDate", "")
+        label = created[:10] if created else v["versionId"]
+        result.append(
+            {
+                "version_id": v["versionId"],
+                "created_at": created,
+                "label": label,
+                "is_latest": v.get("isLatestVersion", False),
+            }
+        )
+    return result or [
+        {
+            "version_id": dataset_id,
+            "created_at": "",
+            "label": "Latest",
+            "is_latest": True,
+        }
+    ]
+
+
 def get_scoring_data(
     filter_selection: Optional[List[FilterSpec]] = None,
     active_dataset_id: Optional[str] = None,
+    version_id: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """
     Get scoring data from DataRobot.
@@ -209,8 +269,10 @@ def get_scoring_data(
     active_dataset_id : Optional[str]
         Data Registry dataset id to score against. When None, the deploy-time
         scoring dataset is used.
+    version_id : Optional[str]
+        Specific dataset version to replay. When None, the latest version is used.
     """
-    df = _get_scoring_data(active_dataset_id)
+    df = _get_scoring_data(active_dataset_id, version_id)
     if filter_selection is None:
         return df.to_dict(orient="records")  # type: ignore[no-any-return]
     for widget in filter_selection:
