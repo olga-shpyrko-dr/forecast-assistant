@@ -323,8 +323,20 @@ if credentials is not None or (
     pulumi.export(generative_deployment_env_name, generative_deployment.id)
 
 
+if settings_main.FRONTEND_TYPE == "react":
+    # Build the SPA as part of the resource graph instead of requiring a manual
+    # `npm run build` before `pulumi up` — only rebuilds when frontend source changes.
+    from infra.settings_frontend_build import build_frontend
+
+    frontend_build = build_frontend()
+    app_files = frontend_build.stdout.apply(
+        lambda _: settings_app_infra.get_app_files(app_runtime_parameters)
+    )
+else:
+    app_files = settings_app_infra.get_app_files(app_runtime_parameters)
+
 application_source = datarobot.ApplicationSource(
-    files=settings_app_infra.get_app_files(app_runtime_parameters),
+    files=app_files,
     runtime_parameter_values=app_runtime_parameters,
     **settings_app_infra.app_source_args,
 )
