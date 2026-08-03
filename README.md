@@ -332,6 +332,8 @@ The simplest LLM option: no Playground, LLM Blueprint, Custom Model, or Deployme
 
 Trade-off versus the other two LLM options: fastest to set up and cheapest to provision, but with less governance/monitoring than a full deployment — there's no dedicated Custom Model/Deployment to attach guard models, drift monitoring, or a retraining policy to.
 
+> **💡 Tip:** `TEXTGEN_REGISTERED_MODEL_ID`, `TEXTGEN_DEPLOYMENT_ID`, and `CHAT_MODEL_NAME` (used by the "attach an existing deployment" option) are not read when `LLM_GATEWAY_MODEL` is set — that code path is skipped entirely. It's safe to leave them at the `dr dotenv setup` wizard's defaults; no need to blank or edit them.
+
 ### Add a new LLM
 
 If the LLM you want to use isn't already defined in the `LLMs` object, you can register it manually using `LLMConfig`.
