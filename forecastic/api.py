@@ -421,6 +421,24 @@ def get_standardized_predictions(
     return processed_predictions
 
 
+def _resolve_target_pred_col(data: pd.DataFrame, target: str) -> str:
+    """Find the target prediction column in a real-time predict() response.
+
+    The exact column name isn't always byte-for-byte f"{target}_PREDICTION" - fall
+    back to the one column ending in "_PREDICTION" if the direct guess isn't there.
+    """
+    guess = f"{target}_PREDICTION"
+    if guess in data.columns:
+        return guess
+    candidates = [c for c in data.columns if c.endswith("_PREDICTION")]
+    if len(candidates) == 1:
+        return candidates[0]
+    raise KeyError(
+        f"Could not find a prediction column for target '{target}' in the response "
+        f"(tried '{guess}', found candidates: {candidates})"
+    )
+
+
 def _process_predictions(predictions: list[dict[str, Any]]) -> list[PredictionRow]:
     """Translate predictions into standardized format."""
 
@@ -432,7 +450,7 @@ def _process_predictions(predictions: list[dict[str, Any]]) -> list[PredictionRo
     target = app_settings.target
     date_id = app_settings.datetime_partition_column
     series_id = app_settings.multiseries_id_column
-    target_pred_col = f"{target}_PREDICTION"
+    target_pred_col = _resolve_target_pred_col(data, target)
 
     if series_id is not None:
         slim_predictions = data[[series_id, date_id, target_pred_col]].rename(
@@ -498,7 +516,7 @@ def _format_predictions(predictions: list[dict[str, Any]]) -> list[dict[Any, Any
     date_id = app_settings.datetime_partition_column
 
     data["timestamp"] = data[date_id]
-    data["prediction"] = data[f"{target}_PREDICTION"]
+    data["prediction"] = data[_resolve_target_pred_col(data, target)]
     if multiseries_id_column is not None:
         data["seriesId"] = data[multiseries_id_column]
     data["forecastDistance"] = data["FORECAST_DISTANCE"]
