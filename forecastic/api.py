@@ -872,7 +872,10 @@ def get_pred_ex_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
     pred_ex_df = pd.DataFrame(
         {"feature": names, "strength": strengths, "feature_value": actual_values}
     )
-    return pred_ex_df
+    # Rows with fewer meaningful drivers than max_explanations come back with NaN for
+    # the unused ranks - drop them so "feature" is a clean string column (mixed
+    # string/NaN breaks .str accessor usage downstream).
+    return pred_ex_df.dropna(subset=["feature"])
 
 
 def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
