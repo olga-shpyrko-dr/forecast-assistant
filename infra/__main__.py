@@ -206,19 +206,25 @@ if settings_generative.LLM_GATEWAY_MODEL:
 
 credentials: DRCredentials | None
 
-try:
-    credentials = get_credentials(settings_generative.LLM)
-except ValueError:
-    raise
-except TypeError:
-    pulumi.warn(
-        textwrap.dedent("""\
-        Failed to find credentials for LLM. Continuing deployment without LLM support.
-
-        If you intended to provide credentials, please consult the Readme and follow the instructions.
-        """)
-    )
+if settings_generative.LLM is None:
+    # Using the LLM Gateway directly (LLM_GATEWAY_MODEL set) - the credentials/Playground/
+    # Blueprint/Deployment chain below is for the LLM enum path and doesn't apply here, so
+    # there's nothing to look up and no warning to raise.
     credentials = None
+else:
+    try:
+        credentials = get_credentials(settings_generative.LLM)
+    except ValueError:
+        raise
+    except TypeError:
+        pulumi.warn(
+            textwrap.dedent("""\
+            Failed to find credentials for LLM. Continuing deployment without LLM support.
+
+            If you intended to provide credentials, please consult the Readme and follow the instructions.
+            """)
+        )
+        credentials = None
 
 credentials_runtime_parameters_values = get_credential_runtime_parameter_values(
     credentials
