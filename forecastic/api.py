@@ -873,9 +873,12 @@ def get_pred_ex_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
         {"feature": names, "strength": strengths, "feature_value": actual_values}
     )
     # Rows with fewer meaningful drivers than max_explanations come back with NaN for
-    # the unused ranks - drop them so "feature" is a clean string column (mixed
-    # string/NaN breaks .str accessor usage downstream).
-    return pred_ex_df.dropna(subset=["feature"])
+    # the unused ranks. Drop them, then force "feature" to string dtype explicitly -
+    # a column that was entirely NaN stays float64 even after dropping every row,
+    # which still breaks .str accessor usage downstream.
+    pred_ex_df = pred_ex_df.dropna(subset=["feature"])
+    pred_ex_df["feature"] = pred_ex_df["feature"].astype(str)
+    return pred_ex_df
 
 
 def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
