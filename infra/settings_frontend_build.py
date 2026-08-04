@@ -65,15 +65,25 @@ def build_frontend() -> command.local.Command:
     Callers should make the ApplicationSource's `files` depend on this command's
     completion (e.g. via `.stdout.apply(...)`) to guarantee build-then-package
     ordering in the resource graph.
+
+    If `forecastic/build/index.html` already exists (e.g. staged manually ahead of
+    time, for environments where `npm ci`/`npm run build` can't reach the registry),
+    this is a no-op instead of attempting — and failing — the real build.
     """
     frontend_dir = PROJECT_ROOT / "frontend_react" / "react_src"
-    build_command = " && ".join(
-        [
-            f"cd {frontend_dir}",
-            "npm ci",
-            "npm run build",
-        ]
-    )
+    build_output = PROJECT_ROOT / "forecastic" / "build" / "index.html"
+    if build_output.exists():
+        build_command = (
+            f"echo 'Using existing build at {build_output} — skipping npm build'"
+        )
+    else:
+        build_command = " && ".join(
+            [
+                f"cd {frontend_dir}",
+                "npm ci",
+                "npm run build",
+            ]
+        )
     return command.local.Command(
         f"Forecasting Assistant Build Frontend [{project_name}]",
         create=build_command,

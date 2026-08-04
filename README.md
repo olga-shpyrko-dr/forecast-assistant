@@ -162,7 +162,7 @@ Both options are served by the **same** Pulumi stack, the **same** `forecastic/`
 | | `FRONTEND_TYPE=streamlit` | `FRONTEND_TYPE=react` |
 |---|---|---|
 | Source | `frontend/` | `frontend_react/react_src/` |
-| Extra build step | None | **Yes** — must run `cd frontend_react/react_src && yarn install && yarn build` before `pulumi up` (builds the SPA into `forecastic/build/`, which FastAPI serves) |
+| Extra build step | None | **Automatic** — `pulumi up` builds the SPA itself (`npm ci && npm run build`, via `infra/settings_frontend_build.py`) and only rebuilds when frontend source changes. If `forecastic/build/index.html` already exists (e.g. staged manually ahead of time for environments where npm can't reach the registry), it's skipped entirely. |
 | Charting | Server-rendered Plotly (`forecastic/api.py::get_forecast_as_plotly_json`) | Client-side charts (`visx`/`d3`) |
 | Filtering | Server-side | Client-side |
 
@@ -381,18 +381,14 @@ This template ships **two** front-ends — a Streamlit app (`frontend/`) and a R
 
 **To switch which one is deployed:**
 1. Set `FRONTEND_TYPE=react` or `FRONTEND_TYPE=streamlit` in `.env`.
-2. If switching to `react`, build the SPA first — Pulumi does not do this for you:
-   ```bash
-   cd frontend_react/react_src
-   yarn install
-   yarn build   # outputs into ../../forecastic/build/, served by FastAPI
-   cd ../..
-   ```
-3. Run `pulumi up` to update your stack with the change.
+2. Run `pulumi up` to update your stack with the change.
    ```bash
    source set_env.sh  # On windows use `set_env.bat`
    pulumi up
    ```
+   If switching to `react`, `pulumi up` builds the SPA itself (`npm ci && npm run build`) before packaging the deployment — no manual build step needed. See `infra/settings_frontend_build.py`.
+
+> **⚠️ If `npm ci`/`npm run build` can't reach your package registry** (e.g. an org-restricted Artifactory blocking a specific package), `pulumi up` will fail at this step with the underlying npm error — that's expected and preferable to a cryptic "Custom Application is not ready" failure later. Work around it by building the SPA somewhere with working registry access and staging the output at `forecastic/build/` yourself (must contain `index.html`) before running `pulumi up` — the build step is skipped entirely when that file already exists.
 
 **To run a front-end locally** (after `pulumi up` has provisioned the time series deployment at least once):
 - Streamlit: `source set_env.sh && cd frontend && streamlit run app.py`
