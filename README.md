@@ -37,12 +37,16 @@ The forecast assistant is a customizable application template for building AI-po
 4. [Why build AI Apps with DataRobot app templates?](#why-build-ai-apps-with-datarobot-app-templates)
 5. [Make changes](#make-changes)
    - [Change the data and how the model is trained](#change-the-data-and-how-the-model-is-trained)
+   - [Modifying the training notebook for your own data](#modifying-the-training-notebook-for-your-own-data)
+   - [Use an existing forecast deployment](#use-an-existing-forecast-deployment)
+   - [Use an existing AI Catalog dataset for training or scoring](#use-an-existing-ai-catalog-dataset-for-training-or-scoring)
    - [Disable the LLM](#disable-the-llm)
    - [Change the LLM](#change-the-llm)
    - [Use the LLM Gateway directly](#use-the-llm-gateway-directly)
    - [Add a new LLM](#add-a-new-llm)
    - [Change the front-end](#change-the-front-end)
    - [Change the language in the front-end](#change-the-language-in-the-front-end)
+   - [Change the application name](#change-the-application-name)
 6. [Share results](#share-results)
 7. [Delete all resources](#delete-all-provisioned-resources)
 8. [Setup for advanced users](#setup-for-advanced-users)
@@ -227,6 +231,9 @@ Each template provides an end-to-end AI architecture, from raw inputs to deploye
 ## Make changes
 
 ### Change the data and how the model is trained
+
+> **❗ Using your own data instead of the demo dataset?** The demo is a multi-store retail sales dataset (`assets/store_sales_train.csv` / `assets/store_sales_predict.csv`). Its column names — the target, the multiseries ID, the known-in-advance features, and the filter columns shown in the app's sidebar — are hardcoded in `notebooks/train_model.ipynb`. **You must update these to match your own data before deploying.** Skipping this step is the single most common cause of deployment failures with this template — for example, an unedited `filterable_categories` list referencing a column that doesn't exist in your data will crash the app at runtime with an error like `KeyError: 'Store'`. See [Modifying the training notebook for your own data](#modifying-the-training-notebook-for-your-own-data) below for exactly what to change.
+
 1. Edit the following two notebooks:
    - `notebooks/train_model.ipynb`: Handles training data ingest and preparation and model training settings.
    - `notebooks/prep_scoring_data.ipynb`: Handles scoring data preparation (the data used to show forecasts in the front-end).
@@ -247,40 +254,56 @@ pulumi up
 ```  
 4. For a forecasting app that is continuously updated, consider running `prep_scoring_data.ipynb` on a schedule.
 
-### Disable the LLM
-In `infra/settings_generative.py`: Set `LLM=None` to disable any generative output altogether.
+#### Modifying the training notebook for your own data
+
+Whether you're training a new model or [using an existing deployment](#use-an-existing-forecast-deployment), `notebooks/train_model.ipynb` has two cells you need to edit for a non-demo dataset:
+
+1. **The known-in-advance feature list** — appears in whichever training-mode cell is active for you:
+   - Training a new model: the `feature_settings_config` inside the `AutopilotRunArgs(...)` cell (under "Model Training"), alongside `target`, `datetime_partition_column`, `multiseries_id_columns`, and the feature-derivation/forecast window settings — all of these must match your project's actual time series setup (ordering column, series ID column, FDW, FW).
+   - Using an existing deployment: the `feature_settings_config` inside the "Extracting configuration from existing model..." cell. `target`/`datetime_partition_column` are auto-detected from your project in this mode, so you typically don't need to set those manually here.
+
+   Replace the demo's known-in-advance columns (`Store_Size`, `Marketing`, `TouristEvent`) with your own:
+   ```python
+   feature_settings_config=[
+       FeatureSettingConfig(feature_name="your_feature_1", known_in_advance=True),
+       FeatureSettingConfig(feature_name="your_feature_2", known_in_advance=True),
+       # ... one entry per known-in-advance column in your model
+   ],
+   ```
+
+2. **`static_app_settings`** (under "Export settings for provisioning app") — this cell runs regardless of training mode, and is the one most likely to break the app if left unedited, since `filterable_categories` names columns that must exist in your scoring data. Replace the demo's `Store`/`Region`/`Market` with your own filterable categorical columns (or an empty list if you don't want any sidebar filters):
+   ```python
+   static_app_settings = StaticAppSettings(
+       filterable_categories=[
+           CategoryFilter(column_name="your_column", display_name=gettext("Your Label")),
+           # ... one entry per column you want as a sidebar filter dropdown
+       ],
+       page_description=gettext("Describe what this app forecasts."),
+       lower_bound_forecast_at_0=True,
+       graph_y_axis=gettext("Your Y-Axis Label"),
+       page_title=gettext("Your App Name"),  # shown to users inside the app — see "Change the application name"
+       headline_prompt=headline_prompt,
+   )
+   ```
+
+After editing, delete the cached notebook output so your edits actually take effect, then redeploy:
+```bash
+rm forecastic/train_model_output.*.yaml
+pulumi up   # or: dr start
+```
+(If that cached file is still present, `pulumi up` treats the notebook as already run and skips re-executing it — deleting it first forces your edits to take effect.)
 
 ### Use an existing forecast deployment
 
 To use an existing forecast deployment instead of creating a new one:
 
 1. In `.env`: Set `FORECAST_DEPLOYMENT_ID` to the ID of your existing deployment
-2. Run `pulumi up` to update your stack with the existing deployment
+2. Update `notebooks/train_model.ipynb` to match your model — see [Modifying the training notebook for your own data](#modifying-the-training-notebook-for-your-own-data) above. This is **not optional** for non-demo models: the notebook's existing-deployment path auto-detects `target`/`datetime_partition_column` but still needs your own `feature_settings_config` and `filterable_categories`.
+3. Run `pulumi up` to update your stack with the existing deployment
    ```bash
    source set_env.sh  # On windows use `set_env.bat`
    pulumi up
    ```
-
-> **⚠️ Note:** When using an existing deployment:
-> - The script will skip creating batch prediction jobs and retraining policies  
-> - The `train_model.ipynb` notebook will skip training and extract metadata from the existing model
-> - You may need to adjust the `feature_settings_config` in the notebook to match your model's known-in-advance features
-
-**Files that need modification for existing deployments:**
-
-When using an existing deployment, you may need to modify these files to match your model's configuration:
-
-1. **`notebooks/train_model.ipynb`** - Update the `feature_settings_config` to match your model's known-in-advance features:
-   ```python
-   feature_settings_config=[
-       FeatureSettingConfig(feature_name="Your_Feature_Name", known_in_advance=True),
-       # Add other known-in-advance features from your model
-   ]
-   ```
-
-2. **`notebooks/prep_scoring_data.ipynb`** - Ensure your scoring data preparation matches the data format expected by your existing model
-
-3. **`forecastic/schema.py`** - Update app settings if your model has different features or requirements
 
 **What happens when using an existing deployment:**
 
@@ -299,6 +322,9 @@ Independent of `FORECAST_DEPLOYMENT_ID` above, you can skip the local-CSV steps 
 - `FORECAST_SCORING_DATASET_ID` — skips running `notebooks/prep_scoring_data.ipynb` entirely; scores against a dataset already in the AI Catalog. This is the dataset used at deploy time — it's distinct from swapping datasets at runtime in the app UI (React only; see the in-app "Change dataset" picker) or replaying a previous dataset *version* (both front-ends; see the "Prediction Timestamp" selector).
 
 Set either in `.env`, then run `pulumi up` as usual.
+
+### Disable the LLM
+In `infra/settings_generative.py`: Set `LLM=None` to disable any generative output altogether.
 
 ### Change the LLM
 
@@ -410,6 +436,17 @@ Each stack provisions its own use case, deployment, and Custom Application — e
 
 #### Change the language in the front-end
 Optionally, you can set the application locale in `forecastic/i18n.py`, e.g. `APP_LOCALE = LanguageCode.JA`. Supported locales are Japanese and English, with English set as the default.
+
+#### Change the application name
+
+There are two independent names, set in two different places:
+
+- **The name shown to users inside the app** — `page_title` in `static_app_settings`, set in `notebooks/train_model.ipynb` (see [Modifying the training notebook for your own data](#modifying-the-training-notebook-for-your-own-data)). Edit it, then delete the cached notebook output and redeploy:
+  ```bash
+  rm forecastic/train_model_output.*.yaml
+  pulumi up   # or: dr start
+  ```
+- **The name shown in DataRobot's Registry** (Registry → Applications) — `app_resource_name` in `infra/settings_app_infra.py`, which defaults to `f"Forecasting Assistant Application [{project_name}]"` (`project_name` comes from your Pulumi stack name). Edit the string there, then run `pulumi up` — no notebook re-run needed.
 
 #### Application resources
 The application now supports inheriting resource configurations from the Application Source. When the Application Source is created, the system automatically fetches its resource settings (replicas, memory, CPU) via the DataRobot API and applies them to the Custom Application.
