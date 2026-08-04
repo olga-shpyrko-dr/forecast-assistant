@@ -87,10 +87,23 @@ button[kind='secondaryFormSubmit']:hover {
     border-radius: 4px !important;
 }
 
-.stMultiSelect span[data-baseweb="tag"] {
+.stMultiSelect span[data-baseweb="tag"],
+.stMultiSelect [data-baseweb="tag"] {
     background-color: #1e3a2a !important;
     color: #81FBA5 !important;
     border: 1px solid #81FBA5 !important;
+}
+
+/* ── Checkbox ────────────────────────────────────────── */
+/* Belt-and-suspenders alongside theme primaryColor, since BaseWeb's checkbox
+   icon fill doesn't always pick up the theme color consistently. */
+.stCheckbox [data-baseweb="checkbox"] svg {
+    fill: #81FBA5 !important;
+}
+
+.stCheckbox [data-baseweb="checkbox"] > div:first-child {
+    background-color: transparent !important;
+    border-color: #81FBA5 !important;
 }
 
 /* ── Expander ────────────────────────────────────────── */
