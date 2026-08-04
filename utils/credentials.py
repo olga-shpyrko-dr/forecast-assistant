@@ -223,8 +223,15 @@ def get_credentials(
                         LLMs.AZURE_OPENAI_GPT_4_TURBO.name: "gpt-4-turbo",
                         LLMs.AZURE_OPENAI_GPT_5_MINI.name: "gpt-5-mini",
                     }
+                    expected_deployment = lookup.get(
+                        llm.name, credentials.azure_deployment
+                    )
+                    deployment_name = (
+                        credentials.azure_deployment or expected_deployment
+                    )
                     if (
                         credentials.azure_deployment is not None
+                        and llm.name in lookup
                         and credentials.azure_deployment != lookup[llm.name]
                     ):
                         pulumi.warn(
@@ -238,19 +245,18 @@ def get_credentials(
                         )
                     openai_client = openai.AzureOpenAI(
                         azure_endpoint=credentials.azure_endpoint,
-                        azure_deployment=credentials.azure_deployment
-                        or lookup[llm.name],
+                        azure_deployment=deployment_name,
                         api_key=credentials.api_key,
                         api_version=credentials.api_version or "2023-05-15",
                     )
                     openai_client.chat.completions.create(
-                        model=llm.name,
+                        model=deployment_name,
                         messages=[{"role": "user", "content": "Hello"}],
                     )
                 except Exception as e:
                     raise ValueError(
                         textwrap.dedent(f"""\
-                            Unable to run a successful test completion against deployment '{credentials.azure_deployment or lookup[llm.name]}'
+                            Unable to run a successful test completion against deployment '{deployment_name}'
                             on '{credentials.azure_endpoint}' with API version '{credentials.api_version or "2023-05-15"}'
                             with provided Azure OpenAI credentials. Please validate your credentials.
 
