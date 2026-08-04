@@ -230,7 +230,15 @@ def _get_scoring_data(version_id: Optional[str] = None) -> pd.DataFrame:
 def get_chart_series_options(
     filter_selection: List[FilterSpec],
 ) -> tuple[str | None, list[str]]:
-    """Label and sidebar selection order for the chart series picker."""
+    """Label and sidebar selection order for the chart series picker.
+
+    Only returns a series breakdown when a filter directly targets the multiseries
+    ID column. A filter on some other dimension (e.g. Industry) isn't a list of
+    valid series IDs - conflating the two used to make the app look up a
+    literally-nonexistent series (e.g. "Financial Services" isn't a real series_id
+    value) whenever the multiseries column wasn't itself one of the exposed
+    filters, silently showing "no data" instead of aggregating everything.
+    """
     multiseries_col = app_settings.multiseries_id_column
     display_name_by_column = {
         category.column_name: category.display_name
@@ -239,11 +247,6 @@ def get_chart_series_options(
     for spec in filter_selection:
         if spec.column == multiseries_col and spec.selected_values:
             return display_name_by_column.get(multiseries_col, multiseries_col), list(
-                spec.selected_values
-            )
-    for spec in filter_selection:
-        if spec.selected_values:
-            return display_name_by_column.get(spec.column, spec.column), list(
                 spec.selected_values
             )
     return None, []
