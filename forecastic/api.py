@@ -425,6 +425,8 @@ def _process_predictions(predictions: list[dict[str, Any]]) -> list[PredictionRo
     """Translate predictions into standardized format."""
 
     data = pd.DataFrame(predictions)
+    if data.empty:
+        return []
 
     bound_at_zero = app_settings.lower_bound_forecast_at_0
     target = dr.Project.get(app_settings.project_id).target
@@ -1095,6 +1097,8 @@ def _get_prompt(
 
 def _make_headline(standardized_predictions: list[PredictionRow]) -> str:
     """Generate subheader for explanation."""
+    if not standardized_predictions:
+        return gettext("No forecast data available for the selected filters.")
     df = pd.DataFrame([i.model_dump() for i in standardized_predictions])
     return _get_completion(
         prompt=gettext("Forecast:") + str(df[["date_id", "prediction"]]),
