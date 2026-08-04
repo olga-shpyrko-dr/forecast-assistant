@@ -862,7 +862,10 @@ def get_pred_ex_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
     actual_values = []
 
     for i in range(1, 4):  # 1, 2, 3
-        names.extend(preds_df[f"EXPLANATION_{i}_FEATURE_NAME"])
+        feature_col = f"EXPLANATION_{i}_FEATURE_NAME"
+        if feature_col not in preds_df.columns:
+            continue
+        names.extend(preds_df[feature_col])
         strengths.extend(preds_df[f"EXPLANATION_{i}_STRENGTH"])
         actual_values.extend(preds_df[f"EXPLANATION_{i}_ACTUAL_VALUE"])
 
