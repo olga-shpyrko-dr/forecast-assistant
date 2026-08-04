@@ -386,7 +386,7 @@ def _process_predictions(predictions: list[dict[str, Any]]) -> list[PredictionRo
         return []
 
     bound_at_zero = app_settings.lower_bound_forecast_at_0
-    target = dr.Project.get(app_settings.project_id).target
+    target = app_settings.target
     date_id = app_settings.datetime_partition_column
     series_id = app_settings.multiseries_id_column
     target_pred_col = f"{target}_PREDICTION"
@@ -448,7 +448,7 @@ def _format_predictions(predictions: list[dict[str, Any]]) -> list[dict[Any, Any
 
     data = pd.DataFrame(predictions)
 
-    target = dr.Project.get(app_settings.project_id).target
+    target = app_settings.target
     multiseries_id_column = app_settings.multiseries_id_column
     date_id = app_settings.datetime_partition_column
 
