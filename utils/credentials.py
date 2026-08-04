@@ -221,6 +221,7 @@ def get_credentials(
                         LLMs.AZURE_OPENAI_GPT_4_O.name: "gpt-4o",
                         LLMs.AZURE_OPENAI_GPT_4_O_MINI.name: "gpt-4o-mini",
                         LLMs.AZURE_OPENAI_GPT_4_TURBO.name: "gpt-4-turbo",
+                        LLMs.AZURE_OPENAI_GPT_5_MINI.name: "gpt-5-mini",
                     }
                     expected_deployment = lookup.get(
                         llm.name, credentials.azure_deployment

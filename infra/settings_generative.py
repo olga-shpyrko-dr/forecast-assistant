@@ -42,7 +42,7 @@ from .settings_main import (
 # with a DataRobot API token. Takes precedence over LLM if both are somehow set.
 LLM_GATEWAY_MODEL = os.environ.get("LLM_GATEWAY_MODEL") or None
 
-LLM = None if LLM_GATEWAY_MODEL else LLMs.AZURE_OPENAI_GPT_4_O_MINI
+LLM = None if LLM_GATEWAY_MODEL else LLMs.AZURE_OPENAI_GPT_5_MINI
 
 if LLM is not None:
     playground_args = PlaygroundArgs(
