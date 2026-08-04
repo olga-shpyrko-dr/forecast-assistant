@@ -439,6 +439,25 @@ def _resolve_target_pred_col(data: pd.DataFrame, target: str) -> str:
     )
 
 
+def _resolve_actual_col(data: pd.DataFrame, target: str) -> str:
+    """Find the historical/actual target column in aggregated scoring data.
+
+    DataRobot may name it "{target} (actual)" or the plain target, depending on how
+    the scoring data was prepared - try both, then fall back to any column starting
+    with the target name so a naming variant doesn't hard-crash the chart.
+    """
+    for candidate in (f"{target} (actual)", target):
+        if candidate in data.columns:
+            return candidate
+    candidates = [c for c in data.columns if c.startswith(target)]
+    if len(candidates) == 1:
+        return candidates[0]
+    raise KeyError(
+        f"Could not find the actual/historical column for target '{target}' "
+        f"(columns: {list(data.columns)})"
+    )
+
+
 def _process_predictions(predictions: list[dict[str, Any]]) -> list[PredictionRow]:
     """Translate predictions into standardized format."""
 
@@ -681,7 +700,7 @@ def get_forecast_as_plotly_json(
         n_historical_records_to_display
     )
 
-    actual_col = f"{target} (actual)" if f"{target} (actual)" in history.columns else target
+    actual_col = _resolve_actual_col(history, target)
     series_suffix = f" ({display_series})" if display_series is not None else ""
     history_name = gettext("{target} History{suffix}").format(
         target=target, suffix=series_suffix
