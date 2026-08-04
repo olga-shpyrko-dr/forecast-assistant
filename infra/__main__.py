@@ -35,6 +35,7 @@ from forecastic.resources import (
     ScoringDataset,
     app_env_name,
     generative_deployment_env_name,
+    llm_gateway_model_env_name,
     scoring_dataset_env_name,
     time_series_deployment_env_name,
 )
@@ -45,7 +46,6 @@ from infra import (
     settings_generative,
     settings_main,
 )
-from infra.settings_generative import LLMBackend
 from infra.settings_forecast_deployment import (
     get_deployment_args,
 )
@@ -56,9 +56,10 @@ from infra.settings_main import (
     scoring_prep_output_file,
 )
 from utils.credentials import (
-    get_app_credential_runtime_parameter_values,
+    get_blueprint_runtime_parameters,
     get_credential_runtime_parameter_values,
     get_credentials,
+    verify_llm_gateway_model,
 )
 from utils.papermill import run_notebook
 
@@ -71,16 +72,19 @@ FORECAST_DEPLOYMENT_ID = os.environ.get("FORECAST_DEPLOYMENT_ID") or None
 # Set FORECAST_SCORING_DATASET_ID to use a pre-existing DR AI Catalog dataset for scoring
 SCORING_DATASET_ID = os.environ.get("FORECAST_SCORING_DATASET_ID") or None
 
-if (
-    settings_generative.LLM_BACKEND == LLMBackend.DATAROBOT_GENAI
-    and settings_generative.LLM == LLMs.DEPLOYED_LLM
-):
+if settings_generative.LLM == LLMs.DEPLOYED_LLM:
     pulumi.info(f"{TEXTGEN_DEPLOYMENT_ID=}")
     pulumi.info(f"{TEXTGEN_REGISTERED_MODEL_ID=}")
     if (TEXTGEN_DEPLOYMENT_ID is None) == (TEXTGEN_REGISTERED_MODEL_ID is None):  # XOR
         raise ValueError(
             "Either TEXTGEN_DEPLOYMENT_ID or TEXTGEN_REGISTERED_MODEL_ID must be set when using a deployed LLM. Please check your .env file"
         )
+
+if settings_generative.LLM_GATEWAY_MODEL:
+    pulumi.info(
+        f"Using LLM Gateway directly with model: {settings_generative.LLM_GATEWAY_MODEL}"
+    )
+    verify_llm_gateway_model(settings_generative.LLM_GATEWAY_MODEL)
 
 LocaleSettings().setup_locale()
 
@@ -191,50 +195,39 @@ app_runtime_parameters = [
     ),
 ]
 
-credentials: DRCredentials | None = None
+if settings_generative.LLM_GATEWAY_MODEL:
+    app_runtime_parameters.append(
+        datarobot.ApplicationSourceRuntimeParameterValueArgs(
+            key=llm_gateway_model_env_name,
+            type="string",
+            value=settings_generative.LLM_GATEWAY_MODEL,
+        ),
+    )
 
-if settings_generative.LLM_BACKEND == LLMBackend.NONE:
-    pulumi.info("LLM narrative disabled (LLM_BACKEND=none).")
-elif settings_generative.LLM is not None:
-    try:
-        credentials = get_credentials(settings_generative.LLM)
-    except ValueError:
-        raise
-    except TypeError:
-        pulumi.warn(
-            textwrap.dedent("""\
-            Failed to find credentials for LLM. Continuing deployment without LLM support.
+credentials: DRCredentials | None
 
-            If you intended to provide credentials, please consult the Readme and follow the instructions.
-            """)
-        )
-        credentials = None
+try:
+    credentials = get_credentials(settings_generative.LLM)
+except ValueError:
+    raise
+except TypeError:
+    pulumi.warn(
+        textwrap.dedent("""\
+        Failed to find credentials for LLM. Continuing deployment without LLM support.
+
+        If you intended to provide credentials, please consult the Readme and follow the instructions.
+        """)
+    )
+    credentials = None
 
 credentials_runtime_parameters_values = get_credential_runtime_parameter_values(
     credentials
 )
-app_credential_runtime_parameters = get_app_credential_runtime_parameter_values(
-    credentials, credentials_runtime_parameters_values
-)
 
-if settings_generative.LLM_BACKEND == LLMBackend.DIRECT_AZURE:
-    if app_credential_runtime_parameters:
-        pulumi.info(
-            "Using direct Azure OpenAI for LLM narrative (no GenAI execution environment)."
-        )
-        app_runtime_parameters.extend(app_credential_runtime_parameters)
-    else:
-        pulumi.warn(
-            "LLM_BACKEND=direct_azure but Azure OpenAI credentials were not found in .env. "
-            "Narrative will be unavailable until OPENAI_API_* runtime parameters are set."
-        )
 
-elif settings_generative.LLM_BACKEND == LLMBackend.DATAROBOT_GENAI and (
-    credentials is not None
-    or (
-        settings_generative.LLM == LLMs.DEPLOYED_LLM
-        and (TEXTGEN_REGISTERED_MODEL_ID is not None or TEXTGEN_DEPLOYMENT_ID is not None)
-    )
+if credentials is not None or (
+    settings_generative.LLM == LLMs.DEPLOYED_LLM
+    and (TEXTGEN_REGISTERED_MODEL_ID is not None or TEXTGEN_DEPLOYMENT_ID is not None)
 ):
     playground = datarobot.Playground(
         use_case_id=use_case.id,
@@ -281,13 +274,34 @@ elif settings_generative.LLM_BACKEND == LLMBackend.DATAROBOT_GENAI and (
             **settings_generative.llm_blueprint_args.model_dump(),
         )
 
+    generative_runtime_parameter_values: (
+        list[datarobot.CustomModelRuntimeParameterValueArgs] | None
+    ) = None
+    if (
+        settings_generative.LLM != LLMs.DEPLOYED_LLM
+        and credentials_runtime_parameters_values
+    ):
+        # Supply the FULL runtime parameter set explicitly. Passing a partial set (e.g. only the
+        # credentials) makes the provider drop every blueprint default that isn't restated,
+        # including DRUM system parameters such as DEVICE_FOR_NEURAL_NETWORK_COMPUTATIONS that the
+        # model requires to load. Restating the full blueprint/DRUM default set alongside the
+        # credentials keeps the model healthy and also repairs models a previous partial submission
+        # had already wiped. Deployed LLMs handle credentials via the proxy deployment, so they keep
+        # the blueprint-generated defaults by omitting runtime_parameter_values entirely.
+        generative_runtime_parameter_values = [
+            *get_blueprint_runtime_parameters(
+                llm_blueprint_id=llm_blueprint.id,
+                playground_id=playground.id,
+                llm_id=settings_generative.llm_blueprint_args.llm_id,
+            ),
+            *credentials_runtime_parameters_values,
+        ]
+
     generative_custom_model = datarobot.CustomModel(
         **settings_generative.custom_model_args.model_dump(exclude_none=True),
         use_case_ids=[use_case.id],
         source_llm_blueprint_id=llm_blueprint.id,
-        runtime_parameter_values=[]
-        if settings_generative.LLM.name == LLMs.DEPLOYED_LLM.name
-        else credentials_runtime_parameters_values,
+        runtime_parameter_values=generative_runtime_parameter_values,
     )
 
     generative_deployment = CustomModelDeployment(

@@ -17,6 +17,7 @@ import json
 import textwrap
 from typing import Any
 
+import datarobot as dr
 import pulumi
 import pulumi_datarobot as datarobot
 import pydantic
@@ -29,6 +30,58 @@ from forecastic.credentials import (
     GoogleCredentials,
 )
 from infra.settings_main import project_name
+
+
+def verify_llm_gateway_model(model_id: str) -> None:
+    """Raise a clear error at deploy time if LLM_GATEWAY_MODEL isn't a valid, active
+    model in DataRobot's LLM Gateway catalog — instead of failing confusingly later
+    at runtime when the app tries to call it.
+    """
+    response = dr.Client().get("genai/llmgw/catalog/").json()
+    catalog = response.get("data", [])
+    matched = [m for m in catalog if m.get("model") == model_id or m.get("llmId") == model_id]
+    active_models = ", ".join(sorted(m["model"] for m in catalog if m.get("isActive")))
+    if not matched:
+        raise ValueError(
+            f"LLM_GATEWAY_MODEL '{model_id}' was not found in the LLM Gateway catalog. "
+            f"Available models: {active_models}"
+        )
+    if not matched[0].get("isActive"):
+        raise ValueError(
+            f"LLM_GATEWAY_MODEL '{model_id}' is not active. Available models: {active_models}"
+        )
+
+
+def get_blueprint_runtime_parameters(
+    llm_blueprint_id: pulumi.Input[str],
+    playground_id: pulumi.Input[str],
+    llm_id: pulumi.Input[str],
+) -> list[datarobot.CustomModelRuntimeParameterValueArgs]:
+    """Return the runtime parameters an LLM-blueprint custom model needs to load and serve.
+
+    Creating a custom model from a blueprint with a *partial* `runtime_parameter_values` set
+    makes the provider keep only the supplied parameters and drop every other blueprint default,
+    including DRUM system parameters such as `DEVICE_FOR_NEURAL_NETWORK_COMPUTATIONS` that the
+    model requires to load. Restate the full default set here so callers can submit it explicitly
+    (alongside credential parameters) instead of relying on a partial submission.
+    """
+    Arg = datarobot.CustomModelRuntimeParameterValueArgs
+    return [
+        Arg(key="PROMPT_COLUMN_NAME", type="string", value="promptText"),
+        Arg(key="LLM_BLUEPRINT_ID", type="string", value=llm_blueprint_id),
+        Arg(
+            key="LLM_BLUEPRINT_ID_COLUMN_NAME", type="string", value="LLM_BLUEPRINT_ID"
+        ),
+        Arg(key="ENABLE_LLM_BLUEPRINT_ID_COLUMN", type="boolean", value="true"),
+        Arg(key="LLM_ID", type="string", value=llm_id),
+        Arg(key="PLAYGROUND_ID", type="string", value=playground_id),
+        Arg(key="DEVICE_FOR_NEURAL_NETWORK_COMPUTATIONS", type="string", value="cpu"),
+        Arg(key="CUSTOM_MODEL_WORKERS", type="numeric", value="1"),
+        Arg(key="DRUM_SERVER_TYPE", type="string", value="gunicorn"),
+        Arg(key="DRUM_GUNICORN_WORKER_CLASS", type="string", value="sync"),
+        Arg(key="DRUM_WORKER_CONNECTIONS", type="numeric", value="100"),
+        Arg(key="DRUM_CLIENT_REQUEST_TIMEOUT", type="numeric", value="300"),
+    ]
 
 
 def get_credential_runtime_parameter_values(
@@ -144,27 +197,6 @@ def get_credential_runtime_parameter_values(
             )
         credential_runtime_parameter_values.append(rtp)
     return credential_runtime_parameter_values
-
-
-def get_app_credential_runtime_parameter_values(
-    credentials: DRCredentials | None,
-    credential_runtime_parameters: list[
-        datarobot.CustomModelRuntimeParameterValueArgs
-    ]
-    | None = None,
-) -> list[datarobot.ApplicationSourceRuntimeParameterValueArgs]:
-    """Map LLM credentials to Custom Application runtime parameters."""
-    params = credential_runtime_parameters or get_credential_runtime_parameter_values(
-        credentials
-    )
-    return [
-        datarobot.ApplicationSourceRuntimeParameterValueArgs(
-            key=param.key,
-            type=param.type,
-            value=param.value,
-        )
-        for param in params
-    ]
 
 
 # Initialize the LLM client based on the selected LLM and its credential type

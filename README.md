@@ -21,6 +21,7 @@ The forecast assistant is a customizable application template for building AI-po
    - [Use an existing forecast deployment](#use-an-existing-forecast-deployment)
    - [Disable the LLM](#disable-the-llm)
    - [Change the LLM](#change-the-llm)
+   - [Use the LLM Gateway directly](#use-the-llm-gateway-directly)
    - [Change the front-end](#change-the-front-end)
    - [Change the language in the front-end](#change-the-language-in-the-front-end)
 5. [Share results](#share-results)
@@ -275,6 +276,22 @@ pulumi up
 > **⚠️ Availability information:**  
 > Using a NIM model requires custom model GPU inference, a premium feature. You will experience errors by using this type of model without the feature enabled. Contact your DataRobot representative or administrator for information on enabling this feature.
 
+### Use the LLM Gateway directly
+
+The simplest LLM option: no Playground, LLM Blueprint, Custom Model, or Deployment gets provisioned at all. The app calls DataRobot's LLM Gateway directly at runtime over its OpenAI-compatible REST endpoint.
+
+1. Find an available model id: `datarobot.Client().get("genai/llmgw/catalog/").json()` — use a row's `model` (or `llmId`) value, e.g. `"vertex_ai/gemini-1.5-flash-002"`. Do **not** add a `"datarobot/"` prefix — that's a `litellm`-specific convention, not part of the actual model id.
+2. In `.env`: set `LLM_GATEWAY_MODEL` to that value. This takes precedence over `LLM` in `infra/settings_generative.py` if both are set — `pulumi up` will provision zero generative resources and skip straight to wiring the model id through as a runtime parameter.
+3. Run `pulumi up`. It validates the model against the Gateway catalog before deploying (fails fast with a list of available models if the id is wrong or inactive) — see `verify_llm_gateway_model()` in `utils/credentials.py`.
+   ```bash
+   source set_env.sh  # On windows use `set_env.bat`
+   pulumi up
+   ```
+
+Trade-off versus the other two LLM options: fastest to set up and cheapest to provision, but with less governance/monitoring than a full deployment — there's no dedicated Custom Model/Deployment to attach guard models, drift monitoring, or a retraining policy to.
+
+> **💡 Tip:** `TEXTGEN_REGISTERED_MODEL_ID`, `TEXTGEN_DEPLOYMENT_ID`, and `CHAT_MODEL_NAME` (used by the "attach an existing deployment" option) are not read when `LLM_GATEWAY_MODEL` is set — that code path is skipped entirely. It's safe to leave them at the `dr dotenv setup` wizard's defaults; no need to blank or edit them.
+
 ### Change the front-end
 1. Ensure you have already run `pulumi up` at least once (to provision the time series deployment).
 2. Streamlit assets are in `frontend/` and can be edited. After provisioning the stack
@@ -323,6 +340,7 @@ The following environment variables can be configured in your `.env` file:
 - `TEXTGEN_REGISTERED_MODEL_ID`: ID of an existing registered model for LLM functionality
 - `TEXTGEN_DEPLOYMENT_ID`: ID of an existing LLM deployment for LLM functionality
 - `CHAT_MODEL_NAME`: Model name for LLM deployments (e.g., "claude-3-7-sonnet-20250219", "datarobot-deployed-llm")
+- `LLM_GATEWAY_MODEL`: Model/llmId from DataRobot's LLM Gateway catalog to call directly, bypassing all generative resource provisioning. See [Use the LLM Gateway directly](#use-the-llm-gateway-directly).
 
 **Optional for LLM providers:**
 - `OPENAI_API_KEY`: OpenAI API key (for OpenAI LLMs)

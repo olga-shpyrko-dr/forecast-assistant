@@ -29,17 +29,17 @@ import plotly.graph_objects as go
 import yaml
 from datarobot.errors import ClientError
 from datarobot_predict.deployment import predict
-from openai import AzureOpenAI, OpenAI
+from openai import OpenAI
 from plotly.subplots import make_subplots
 from pydantic import ValidationError
 
 sys.path.append("..")
 
-from forecastic.credentials import AzureOpenAICredentials
 from forecastic.i18n import gettext
 from forecastic.resources import (
     Application,
     GenerativeDeployment,
+    LLMGatewaySettings,
     ScoringDataset,
     TimeSeriesDeployment,
     app_settings_file_name,
@@ -82,80 +82,6 @@ class LLMNotAvailableException(Exception):
     """Exception raised when the LLM is unavailable."""
 
 
-def _load_azure_openai_credentials() -> AzureOpenAICredentials | None:
-    try:
-        credentials = AzureOpenAICredentials()
-    except ValidationError:
-        return None
-    if not credentials.api_key or not credentials.azure_endpoint:
-        return None
-    if not credentials.azure_deployment:
-        return None
-    return credentials
-
-
-def _get_direct_azure_completion(
-    prompt: str,
-    temperature: float = 0,
-    system_prompt: Optional[str] = None,
-) -> str | None:
-    """Call Azure OpenAI chat completions directly (no GenAI execution environment)."""
-    credentials = _load_azure_openai_credentials()
-    if credentials is None:
-        return None
-    if system_prompt:
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-    else:
-        messages = [{"role": "user", "content": prompt}]
-    try:
-        client = AzureOpenAI(
-            api_key=credentials.api_key,
-            azure_endpoint=credentials.azure_endpoint.rstrip("/"),
-            api_version=credentials.api_version or "2024-08-01-preview",
-        )
-        resp = client.chat.completions.create(
-            messages=messages,  # type: ignore[arg-type]
-            model=credentials.azure_deployment,
-            temperature=temperature,
-        )
-        return str(resp.choices[0].message.content)
-    except Exception:
-        return None
-
-
-def _get_datarobot_deployment_completion(
-    prompt: str,
-    temperature: float = 0,
-    system_prompt: Optional[str] = None,
-) -> str:
-    """Call a DataRobot generative deployment via the OpenAI-compatible proxy."""
-    generative_deployment_id = GenerativeDeployment().id
-    if not generative_deployment_id:
-        raise LLMNotAvailableException("Generative deployment is not configured.")
-    dr_client = dr.client.get_client()
-    azure_client = OpenAI(
-        base_url=dr_client.endpoint.rstrip("/")
-        + f"/deployments/{generative_deployment_id}",
-        api_key=dr_client.token,
-    )
-    if system_prompt:
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ]
-    else:
-        messages = [{"role": "user", "content": prompt}]
-    resp = azure_client.chat.completions.create(
-        messages=messages,  # type: ignore[arg-type]
-        model="datarobot-deployed-llm",
-        temperature=temperature,
-    )
-    return str(resp.choices[0].message.content)
-
-
 def _get_completion(
     prompt: str,
     temperature: float = 0,
@@ -163,19 +89,39 @@ def _get_completion(
     llm_model_name: Optional[str] = None,
 ) -> str:
     """Generate LLM completion."""
+    gateway_model = LLMGatewaySettings().model
     try:
-        direct = _get_direct_azure_completion(
-            prompt=prompt,
+        dr_client = dr.client.get_client()
+        if gateway_model:
+            # Direct LLM Gateway: no Playground/Blueprint/Deployment chain was
+            # provisioned — call the Gateway's OpenAI-compatible endpoint directly
+            # with the catalog model id (see infra/settings_generative.py).
+            client = OpenAI(
+                base_url=dr_client.endpoint.rstrip("/") + "/genai/llmgw",
+                api_key=dr_client.token,
+            )
+            model = gateway_model
+        else:
+            generative_deployment_id = GenerativeDeployment().id
+            client = OpenAI(
+                base_url=dr_client.endpoint.rstrip("/")
+                + f"/deployments/{generative_deployment_id}",
+                api_key=dr_client.token,
+            )
+            model = "datarobot-deployed-llm"
+        if system_prompt:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ]
+        else:
+            messages = [{"role": "user", "content": prompt}]
+        resp = client.chat.completions.create(
+            messages=messages,  # type: ignore[arg-type]
+            model=model,
             temperature=temperature,
-            system_prompt=system_prompt,
         )
-        if direct is not None:
-            return direct
-        return _get_datarobot_deployment_completion(
-            prompt=prompt,
-            temperature=temperature,
-            system_prompt=system_prompt,
-        )
+        return str(resp.choices[0].message.content)
     except Exception as e:
         raise LLMNotAvailableException("LLM is unavailable.") from e
 
@@ -185,10 +131,11 @@ def get_app_settings() -> AppSettings:
 
 
 def is_llm_commentary_available() -> bool:
-    """True when app config allows LLM commentary and runtime credentials exist."""
+    """True when app config allows LLM commentary and a generative deployment
+    (or a direct LLM Gateway model) is configured."""
     if not app_settings.llm_commentary_enabled:
         return False
-    if _load_azure_openai_credentials() is not None:
+    if LLMGatewaySettings().model:
         return True
     try:
         return bool(GenerativeDeployment().id)

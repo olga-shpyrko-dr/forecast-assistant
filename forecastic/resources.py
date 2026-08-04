@@ -106,6 +106,7 @@ time_series_deployment_env_name: str = "FORECAST_DEPLOYMENT_ID"
 scoring_dataset_env_name: str = "FORECAST_SCORING_DATASET_ID"
 app_env_name: str = "DATAROBOT_APPLICATION_ID"
 generative_deployment_env_name: str = "GENERATIVE_DEPLOYMENT_ID"
+llm_gateway_model_env_name: str = "LLM_GATEWAY_MODEL"
 
 
 class GenerativeDeployment(DynamicSettings):
@@ -114,6 +115,18 @@ class GenerativeDeployment(DynamicSettings):
         validation_alias=AliasChoices(
             "MLOPS_RUNTIME_PARAM_" + generative_deployment_env_name,
             generative_deployment_env_name,
+        ),
+    )
+
+
+class LLMGatewaySettings(DynamicSettings):
+    """Set when the app calls DataRobot's LLM Gateway directly (no deployment)."""
+
+    model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_" + llm_gateway_model_env_name,
+            llm_gateway_model_env_name,
         ),
     )
 

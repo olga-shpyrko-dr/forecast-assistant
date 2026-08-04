@@ -124,7 +124,7 @@ class AppSettings(BaseModel):
         registered_model_version_id: str,
         what_if_features: list[FeatureSettingConfig],
         important_features: list[dict[str, Any]],
-        prediction_interval: int,
+        prediction_interval: Optional[int],
         static_app_settings: StaticAppSettings,
     ) -> AppSettings:
         registered_model_version = dr.RegisteredModel.get(

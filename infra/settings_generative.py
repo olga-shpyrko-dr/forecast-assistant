@@ -13,7 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
-from enum import Enum
+import os
 
 import datarobot as dr
 import pulumi_datarobot as datarobot
@@ -34,27 +34,17 @@ from .settings_main import (
     project_name,
 )
 
-class LLMBackend(str, Enum):
-    """How the app obtains LLM narrative completions."""
+# Set LLM_GATEWAY_MODEL to call DataRobot's LLM Gateway directly at runtime (e.g.
+# "vertex_ai/gemini-1.5-flash-002" — a bare model/llmId from the `genai/llmgw/catalog/`
+# response, not "datarobot/"-prefixed). This bypasses the whole Playground/LLM
+# Blueprint/Custom Model/Deployment chain below entirely — no generative resources
+# get provisioned; the app calls the Gateway's OpenAI-compatible endpoint directly
+# with a DataRobot API token. Takes precedence over LLM if both are somehow set.
+LLM_GATEWAY_MODEL = os.environ.get("LLM_GATEWAY_MODEL") or None
 
-    NONE = "none"
-    # Call Azure OpenAI from the Custom Application (no GenAI execution environment).
-    DIRECT_AZURE = "direct_azure"
-    # Original template path: Playground + LLM Blueprint + Custom Model in GenAI Moderations env.
-    DATAROBOT_GENAI = "datarobot_genai"
+LLM = None if LLM_GATEWAY_MODEL else LLMs.AZURE_OPENAI_GPT_4_O_MINI
 
-
-# Default for STS / tenants without [GenAI] Python 3.12 with Moderations.
-LLM_BACKEND = LLMBackend.DIRECT_AZURE
-
-# Used for credential validation and (datarobot_genai) blueprint selection.
-LLM = (
-    LLMs.AZURE_OPENAI_GPT_4_O_MINI
-    if LLM_BACKEND != LLMBackend.NONE
-    else None
-)
-
-if LLM_BACKEND == LLMBackend.DATAROBOT_GENAI and LLM is not None:
+if LLM is not None:
     playground_args = PlaygroundArgs(
         resource_name=f"Forecasting Assistant Playground [{project_name}]",
     )
