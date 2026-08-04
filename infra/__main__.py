@@ -18,6 +18,15 @@ import sys
 import textwrap
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Must run before any local settings modules are imported below - several of them (e.g.
+# settings_generative.LLM_GATEWAY_MODEL) read os.environ at import time, and `pulumi up`
+# doesn't otherwise source .env into its own process the way the training notebook does
+# (which calls this itself). Without this, FORECAST_DEPLOYMENT_ID/LLM_GATEWAY_MODEL/etc.
+# silently read as unset here even though the notebook sees them correctly.
+load_dotenv()
+
 import pulumi
 import pulumi_datarobot as datarobot
 import yaml
