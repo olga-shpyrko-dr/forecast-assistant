@@ -88,4 +88,11 @@ def build_frontend() -> command.local.Command:
         f"Forecasting Assistant Build Frontend [{project_name}]",
         create=build_command,
         triggers=[_hash_frontend_sources(frontend_dir)],
+        environment={
+            # Node 17+ bundles OpenSSL 3.x, which drops support for the legacy
+            # digest algorithms some build tooling (here, jiti - used by Tailwind
+            # to load its config) still calls for non-cryptographic cache keys.
+            # Without this, the build fails with "digital envelope routines::unsupported".
+            "NODE_OPTIONS": "--openssl-legacy-provider",
+        },
     )
