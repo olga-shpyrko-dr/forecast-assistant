@@ -928,6 +928,8 @@ def _build_combined_figure(
             x=forecast["date_id"], y=forecast["high"], mode="lines",
             name=gettext("High forecast"),
             line=dict(color="#909BF5", width=1, dash="dot"),
+            fill="tonexty",
+            fillcolor="rgba(144, 155, 245, 0.25)",
             legend="legend",
         ), row=1, col=2)
 
