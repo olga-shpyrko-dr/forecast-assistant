@@ -9,8 +9,8 @@
     --card: 207 12% 15%;
     --card-forground: 207 16% 11%;
     --border: 212 11% 27%;
-    --primary: 205 60% 51%;
-    --primary-foreground: 0 0% 100;
+    --primary: 138 94% 75%;
+    --primary-foreground: 0 0% 4%;
     --secondary: 207.7 11.9% 21.4%;
     --secondary-foreground: 204 12% 92%;
     --muted: 210 12.5% 18.8%;
@@ -30,6 +30,11 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    /* Forecast line color - kept separate from --primary (used for buttons/
+       switches/etc.) so the History (green) and Forecast series in
+       ExplanationsLineChart.tsx stay visually distinct even though --primary
+       is also brand green. */
+    --chart-forecast: 200 97% 63%;
   }
 }
 

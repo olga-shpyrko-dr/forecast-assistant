@@ -39,9 +39,10 @@ const margin = {
   left: 60,
 };
 
-// Scoring/history series is drawn in orange; the forecast series stays blue
-// (the app primary color).
-const SCORING_LINE_COLOR = twColors.orange[400];
+// History is drawn in DataRobot brand green; forecast uses --chart-forecast
+// (a separate blue, decoupled from --primary so it stays distinguishable now
+// that --primary itself is also brand green, used for buttons/switches/etc.).
+const SCORING_LINE_COLOR = "#81FBA5";
 
 const ExplanationsLineChart = () => {
   const brushRef = useRef(null);
@@ -587,7 +588,7 @@ const ExplanationsLineChart = () => {
             x={(d) => xScale(getForecastXValue(d))}
             y={(d) => yScale(getForecastYValue(d))}
             stroke={
-              predictionExplanationsEnabled ? "white" : "hsl(var(--primary))"
+              predictionExplanationsEnabled ? "white" : "hsl(var(--chart-forecast))"
             }
             strokeWidth={3}
           />
@@ -597,7 +598,7 @@ const ExplanationsLineChart = () => {
                 data={filteredForecastData}
                 x={(d) => xScale(getForecastXValue(d))}
                 y={(d) => yScale(getForecastYValueLow(d))}
-                stroke="hsl(var(--primary))"
+                stroke="hsl(var(--chart-forecast))"
                 strokeWidth={1}
                 strokeDasharray={4}
               />
@@ -605,7 +606,7 @@ const ExplanationsLineChart = () => {
                 data={filteredForecastData}
                 x={(d) => xScale(getForecastXValue(d))}
                 y={(d) => yScale(getForecastYValueHigh(d))}
-                stroke="hsl(var(--primary))"
+                stroke="hsl(var(--chart-forecast))"
                 strokeWidth={1}
                 strokeDasharray={4}
               />
@@ -640,13 +641,13 @@ const ExplanationsLineChart = () => {
             data={groupedScoringData}
             x={(d) => brushXScale(getXValue(d))}
             y={(d) => brushYScale(getYValue(d))}
-            stroke="hsl(var(--primary))"
+            stroke="hsl(var(--chart-forecast))"
           />
           <LinePath
             data={groupedForecastData}
             x={(d) => brushXScale(getForecastXValue(d))}
             y={(d) => brushYScale(getForecastYValue(d))}
-            stroke="hsl(var(--primary))"
+            stroke="hsl(var(--chart-forecast))"
           />
           <Brush
             xScale={brushXScale}
@@ -719,14 +720,14 @@ const ChartLegend = ({
       <span className="flex gap-2 items-center">
         <span
           className={`w-[10px] border-t-[3px] border-[${
-            predictionExplanationsEnabled ? "white" : "hsl(var(--primary))"
+            predictionExplanationsEnabled ? "white" : "hsl(var(--chart-forecast))"
           }]`}
         />
         <span>Forecast</span>
       </span>
       {confidenceIntervalEnabled ? (
         <span className="flex gap-2 items-center">
-          <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
+          <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--chart-forecast))] border-dashed" />
           <span>{predictionInterval}% confidence</span>
         </span>
       ) : null}
@@ -816,7 +817,7 @@ const TooltipContent = ({
         <div className="font-semibold text-gray-200">{date}</div>
         <div className="flex items-center justify-between w-full">
           <span className="flex flex-1 gap-2 items-center overflow-hidden">
-            <span className="flex-shrink-0 w-[10px] border-t-[1.5px] border-[hsl(var(--primary))]" />
+            <span className="flex-shrink-0 w-[10px] border-t-[1.5px] border-[hsl(var(--chart-forecast))]" />
             <span className="truncate">{targetColumn}</span>
           </span>
           <span>{tooltipData[targetColumn]}</span>
@@ -836,7 +837,7 @@ const TooltipContent = ({
         <div className="uppercased">Forecast</div>
         <div className="flex items-center justify-between">
           <span className="flex gap-2 items-center overflow-hidden">
-            <span className="w-[10px] border-t-[3px] border-[hsl(var(--primary))]" />
+            <span className="w-[10px] border-t-[3px] border-[hsl(var(--chart-forecast))]" />
             <span className="truncate">{targetColumn}</span>
           </span>
           <span>{(tooltipData as ForecastData).prediction.toFixed(2)}</span>
@@ -845,7 +846,7 @@ const TooltipContent = ({
           <>
             <div className="flex items-center justify-between">
               <span className="flex gap-2 items-center">
-                <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
+                <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--chart-forecast))] border-dashed" />
                 <span>+{intervalKey}% confidence</span>
               </span>
               <span>
@@ -856,7 +857,7 @@ const TooltipContent = ({
             </div>
             <div className="flex items-center justify-between">
               <span className="flex gap-2 items-center">
-                <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--primary))] border-dashed" />
+                <span className="w-[10px] border-t-[1.5px] border-[hsl(var(--chart-forecast))] border-dashed" />
                 <span>-{intervalKey}% confidence</span>
               </span>
               <span>
