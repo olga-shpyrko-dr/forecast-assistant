@@ -89,10 +89,12 @@ def build_frontend() -> command.local.Command:
         create=build_command,
         triggers=[_hash_frontend_sources(frontend_dir)],
         environment={
-            # Node 17+ bundles OpenSSL 3.x, which drops support for the legacy
-            # digest algorithms some build tooling (here, jiti - used by Tailwind
-            # to load its config) still calls for non-cryptographic cache keys.
-            # Without this, the build fails with "digital envelope routines::unsupported".
-            "NODE_OPTIONS": "--openssl-legacy-provider",
+            # jiti (used internally by Tailwind's config loader) hashes the config
+            # source with MD5 to build a filesystem cache key. On a FIPS-hardened
+            # Node build (no legacy OpenSSL provider available - NODE_OPTIONS=
+            # --openssl-legacy-provider isn't an option here), that MD5 call fails
+            # with "digital envelope routines::unsupported". Disabling jiti's cache
+            # skips that code path entirely instead of trying to re-enable MD5.
+            "JITI_CACHE": "false",
         },
     )
