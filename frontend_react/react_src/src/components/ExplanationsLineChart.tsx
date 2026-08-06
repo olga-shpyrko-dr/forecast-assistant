@@ -14,7 +14,7 @@ import { format as d3Format } from "d3";
 import { defaultStyles, useTooltip, TooltipWithBounds } from "@visx/tooltip";
 import { scaleTime, scaleLinear, scaleOrdinal, scaleBand } from "@visx/scale";
 import { Group } from "@visx/group";
-import { LinePath, Line, Bar, BarStack } from "@visx/shape";
+import { LinePath, Line, Bar, BarStack, Area } from "@visx/shape";
 import { AxisLeft, AxisRight, AxisBottom } from "@visx/axis";
 import { GridRows } from "@visx/grid";
 import { localPoint } from "@visx/event";
@@ -594,6 +594,15 @@ const ExplanationsLineChart = () => {
           />
           {confidenceIntervalEnabled && intervalsAvailable ? (
             <>
+              <Area
+                data={filteredForecastData}
+                x={(d) => xScale(getForecastXValue(d))}
+                y0={(d) => yScale(getForecastYValueLow(d))}
+                y1={(d) => yScale(getForecastYValueHigh(d))}
+                fill="hsl(var(--chart-forecast))"
+                fillOpacity={0.25}
+                stroke="none"
+              />
               <LinePath
                 data={filteredForecastData}
                 x={(d) => xScale(getForecastXValue(d))}
