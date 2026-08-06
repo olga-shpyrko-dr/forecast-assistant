@@ -7,6 +7,7 @@ import { faShareNodes } from "@fortawesome/free-solid-svg-icons/faShareNodes";
 import { Button } from "~/components/ui/button";
 import { Switch } from "~/components/ui/switch";
 import { Label } from "~/components/ui/label";
+import { Input } from "~/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -141,6 +142,8 @@ const ForecastSettings = () => {
     activeDatasetId,
     selectedVersionId,
     setSelectedVersionId,
+    numHistoricalRecords,
+    setNumHistoricalRecords,
     showLlmCommentary,
     toggleShowLlmCommentary,
     setFilters,
@@ -260,6 +263,19 @@ const ForecastSettings = () => {
           </Select>
         </div>
       ) : null}
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="num-historical-records">
+          Number of records to display
+        </Label>
+        <Input
+          id="num-historical-records"
+          type="number"
+          min={1}
+          value={numHistoricalRecords}
+          disabled={inputsDisabled}
+          onChange={(e) => setNumHistoricalRecords(Number(e.target.value))}
+        />
+      </div>
       {!isCustomDatasetActive &&
         filterOptions.map((filter) => {
           const items = filters[filter.name] || [];

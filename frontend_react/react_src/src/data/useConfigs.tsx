@@ -38,6 +38,7 @@ export type AppSettings = {
   important_features: ImportantFeature[];
   lower_bound_forecast_at_0: boolean;
   llm_commentary_available: boolean;
+  maximum_default_display_length: number;
   model_id: string;
   model_name: string;
   multiseries_id_column: string | null;

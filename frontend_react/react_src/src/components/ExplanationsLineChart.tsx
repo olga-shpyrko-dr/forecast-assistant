@@ -63,6 +63,7 @@ const ExplanationsLineChart = () => {
     predictionExplanationsEnabled,
     forecastDataLoading,
     selectedFeatures,
+    numHistoricalRecords,
   } = useContext(AppStateContext);
   const {
     datetime_partition_column: dateColumn,
@@ -149,8 +150,11 @@ const ExplanationsLineChart = () => {
       {} as Record<string, ScoringData>,
     );
 
-    return Object.values(groupedData);
-  }, [scoringData]);
+    const values = Object.values(groupedData);
+    // Match Streamlit's history.tail(n_historical_records_to_display) - a hard cap
+    // on how much history is shown, not just a default zoom/brush position.
+    return numHistoricalRecords ? values.slice(-numHistoricalRecords) : values;
+  }, [scoringData, numHistoricalRecords]);
 
   const groupedForecastData = useMemo(() => {
     // group by timestamp and sum the prediction

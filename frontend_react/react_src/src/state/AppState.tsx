@@ -102,6 +102,8 @@ type AppState = {
   activeDatasetName: string;
   selectedVersionId: string | null;
   setSelectedVersionId: (id: string | null) => void;
+  numHistoricalRecords: number;
+  setNumHistoricalRecords: (n: number) => void;
   toggleConfidenceInterval: () => void;
   togglePredictionExplanations: () => void;
   toggleShowLlmCommentary: () => void;
@@ -197,6 +199,8 @@ const INITIAL_STATE: AppState = {
   activeDatasetName: "",
   selectedVersionId: null,
   setSelectedVersionId: () => {},
+  numHistoricalRecords: 0,
+  setNumHistoricalRecords: () => {},
   toggleConfidenceInterval: () => {},
   togglePredictionExplanations: () => {},
   toggleShowLlmCommentary: () => {},
@@ -455,6 +459,14 @@ export const AppStateProvider = ({
     null,
   );
 
+  const [numHistoricalRecords, setNumHistoricalRecords] = useState<number>(0);
+
+  useEffect(() => {
+    if (appSettings.maximum_default_display_length) {
+      setNumHistoricalRecords(appSettings.maximum_default_display_length);
+    }
+  }, [appSettings.maximum_default_display_length]);
+
   const seriesOptions = useMemo(() => {
     const ids = new Set<string>();
     state.forecastData.forEach((d) => {
@@ -614,6 +626,8 @@ export const AppStateProvider = ({
         setFilters,
         setActiveDataset,
         setSelectedVersionId,
+        numHistoricalRecords,
+        setNumHistoricalRecords,
         importantFeaturesWithColors,
         setForecastData,
         setForecastDataLoading,
