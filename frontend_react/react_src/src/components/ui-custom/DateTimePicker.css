@@ -14,10 +14,10 @@
       @apply cursor-pointer hover:bg-white/5;
     }
 
-    &.rdtOld,
-    &.rdtNew {
-      @apply text-muted-foreground opacity-80;
-    }
+    /*&.rdtOld,*/
+    /*&.rdtNew {*/
+    /*  @apply text-muted-foreground opacity-80;*/
+    /*}*/
 
     &.rdtToday {
       @apply bg-accent text-accent-foreground;

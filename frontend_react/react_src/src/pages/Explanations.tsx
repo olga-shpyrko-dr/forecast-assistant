@@ -1,4 +1,5 @@
 import { Fragment, useState, useMemo, useContext, useEffect } from "react";
+import { Bot } from "lucide-react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons/faXmark";
 import { faPlus } from "@fortawesome/free-solid-svg-icons/faPlus";
@@ -46,7 +47,6 @@ import {
   getDatePickerTimeConstraints,
   type FormattedXEMPFeature,
 } from "~/helpers";
-import drIcon from "~/assets/dr-chat-icon.png";
 
 const Explanations = () => {
   const { scoringData, appSettings } = useContext(AppStateContext);
@@ -644,11 +644,7 @@ const Summary = () => {
           ) : null}
           {naturalLanguageSummary && !naturalLanguageSummaryLoading ? (
             <div className="flex gap-3 p-3 rounded border">
-              <img
-                src={drIcon}
-                className="flex-shrink-0 w-8 h-8"
-                alt="DataRobot"
-              />
+              <Bot className="flex-shrink-0 w-8 h-8" />
               <span className="mt-2 whitespace-pre-wrap">
                 {naturalLanguageSummary}
               </span>

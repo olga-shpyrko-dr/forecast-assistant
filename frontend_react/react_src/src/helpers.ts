@@ -283,11 +283,32 @@ export const convertPythonDateFormatToJavaScript = (formatStr: string) => {
   return formatStr;
 };
 
+const COLOR_PALETTE = [
+  "hsl(87 60% 58%)",
+  "hsl(199 97% 62%)",
+  "hsl(8 80% 57%)",
+  "hsl(84 60% 35%)",
+  "hsl(55 75% 60%)",
+  "hsl(17 96% 73%)",
+  "hsl(220 49% 45%)",
+  "hsl(213 9% 60%)",
+  "hsl(143 68% 61%)",
+  "hsl(286 55% 76%)",
+  "hsl(180 100% 25%)",
+  "hsl(262 49% 40%)",
+  "hsl(30 100% 50%)",
+  "hsl(312 68% 73%)",
+  "hsl(234 84% 76%)",
+  "hsl(330 80% 40%)",
+  "hsl(220 99% 58%)",
+  "hsl(51 76% 36%)",
+];
+
 export const assignColorsToFeatures = (
   features: ImportantFeature[],
 ): Feature[] => {
-  const featuresWithColors = features.map((feature) => {
-    const color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+  const featuresWithColors = features.map((feature, index) => {
+    const color = COLOR_PALETTE[index % COLOR_PALETTE.length];
     return { name: feature.featureName, color };
   });
 

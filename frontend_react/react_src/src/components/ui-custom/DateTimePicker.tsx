@@ -28,6 +28,7 @@ type Props = {
   timeFormat: string | false;
   timeConstraints?: TimeConstraints;
   onChange: (value: string | Moment) => void;
+  isValidDate?: (currentDate: Moment) => boolean;
 };
 
 const DateTimePicker = ({
@@ -38,6 +39,7 @@ const DateTimePicker = ({
   timeFormat,
   timeConstraints,
   onChange,
+  isValidDate,
 }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -101,7 +103,7 @@ const DateTimePicker = ({
       inputProps={inputProps}
       timeFormat={timeFormat}
       timeConstraints={timeConstraints}
-      isValidDate={isDateEnabled}
+      isValidDate={isValidDate || isDateEnabled}
       renderInput={renderInput}
       renderView={renderView}
       onChange={onChange}
