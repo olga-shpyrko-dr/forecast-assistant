@@ -73,12 +73,20 @@ def build_frontend() -> command.local.Command:
     which was a workaround for environments where npm couldn't reach the registry.
     That's now fixed at the registry-config level (.npmrc + lockfile), and the
     short-circuit was silently serving stale builds after real source changes.
+
+    Uses `npm install` rather than `npm ci`: `npm ci` unconditionally wipes and
+    reinstalls all ~500 packages from scratch every time this command reruns, even
+    for a source change that didn't touch package.json/package-lock.json at all.
+    `npm install` reuses the existing node_modules and is a no-op (beyond a quick
+    verify) when dependencies haven't actually changed, so most rebuilds - which
+    are source/style changes, not dependency changes - go straight to `npm run
+    build` instead of re-downloading everything.
     """
     frontend_dir = PROJECT_ROOT / "frontend_react" / "react_src"
     build_command = " && ".join(
         [
             f"cd {frontend_dir}",
-            "npm ci",
+            "npm install",
             "npm run build",
         ]
     )
