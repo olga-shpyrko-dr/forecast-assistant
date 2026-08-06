@@ -284,7 +284,7 @@ const FeaturesDropdown = ({
   }, [selectedFeatures]);
 
   const canAddFeature =
-    selectedFeatures.length < 5 && filteredFeaturesOptions.length > 0;
+    selectedFeatures.length < 15 && filteredFeaturesOptions.length > 0;
 
   return (
     <DropdownMenu>
