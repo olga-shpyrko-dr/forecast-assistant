@@ -46,7 +46,7 @@ use_case_args = UseCaseArgs(
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.absolute()
 
-model_training_nb = PROJECT_ROOT / "notebooks" / "use_case_GTER_train_model.ipynb"
+model_training_nb = PROJECT_ROOT / "notebooks" / "train_model.ipynb"
 model_training_output_name = f"train_model_output.{project_name}.yaml"
 model_training_output_file = PROJECT_ROOT / "forecastic" / model_training_output_name
 scoring_prep_nb = PROJECT_ROOT / "notebooks" / "prep_scoring_data.ipynb"
