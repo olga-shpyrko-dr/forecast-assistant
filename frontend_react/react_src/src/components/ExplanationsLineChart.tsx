@@ -919,7 +919,7 @@ const TooltipFeaturesContent = ({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="uppercased">FEATURE XEMP VALUES</div>
+      <div className="uppercased">FEATURE PERMUTATION-BASED VALUES</div>
       {features.map((feature) => {
         return (
           <div

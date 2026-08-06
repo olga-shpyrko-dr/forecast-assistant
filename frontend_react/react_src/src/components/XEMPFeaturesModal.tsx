@@ -69,10 +69,10 @@ const XEMPFeaturesModal = ({
     >
       <DialogContent className="flex flex-col sm:max-w-[720px] max-h-[90vh] overflow-hidden">
         <DialogHeader>
-          <DialogTitle>XEMP over time</DialogTitle>
+          <DialogTitle>Permutation-based values over time</DialogTitle>
           <DialogDescription>
             See how the values of the selected feature over time influence the
-            forecast, based on XEMP.
+            forecast, based on permutation-based values.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 flex-grow overflow-y-auto">
@@ -188,7 +188,7 @@ const RawValues = ({
         <TableRow>
           <TableHead>Forecast distance</TableHead>
           <TableHead>Forecast value</TableHead>
-          <TableHead>XEMP value</TableHead>
+          <TableHead>Permutation-based value</TableHead>
           <TableHead>Feature value</TableHead>
         </TableRow>
       </TableHeader>

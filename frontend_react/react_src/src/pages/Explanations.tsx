@@ -369,10 +369,10 @@ const XEMPExplanations = () => {
   return (
     <div className="flex flex-col gap-4 overflow-y-hidden">
       <div>
-        <h4 className="mb-1 text-lg font-medium">XEMP Explanations</h4>
+        <h4 className="mb-1 text-lg font-medium">Permutation-based Explanations</h4>
         <p className="text-gray-400">
-          See how individual features affected the forecast, based on XEMP
-          values.
+          See how individual features affected the forecast, based on
+          permutation-based values.
         </p>
       </div>
       <div className="flex flex-col gap-2">
@@ -502,7 +502,7 @@ const FullForecastTable = ({
         <TableHeader>
           <TableRow>
             <TableHead className="w-[280px]">
-              Avg. XEMP value and trend
+              Avg. permutation-based value and trend
             </TableHead>
             <TableHead>Feature</TableHead>
           </TableRow>
@@ -609,7 +609,7 @@ const SingleDateTable = ({
     <Table className="table-fixed">
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[200px]">XEMP value</TableHead>
+          <TableHead className="w-[200px]">Permutation-based value</TableHead>
           <TableHead>Feature and avg. value</TableHead>
         </TableRow>
       </TableHeader>

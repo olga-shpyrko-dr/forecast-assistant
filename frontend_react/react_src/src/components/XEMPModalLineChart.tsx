@@ -56,7 +56,7 @@ const XEMPModalLineChart = ({
         };
       case "xempValue":
         return {
-          leftAxisLabel: "XEMP value",
+          leftAxisLabel: "Permutation-based value",
           lineColor: "white",
           formatTick: (value: NumberValue) => value.toString(),
         };
