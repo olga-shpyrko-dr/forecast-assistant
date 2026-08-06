@@ -149,6 +149,70 @@ class ScoringDataset(DynamicSettings):
     )
 
 
+class AppOverrides(DynamicSettings):
+    """Live, admin-editable overrides for use-case display/prediction defaults.
+
+    All fields default to None (no override - use the baked AppSettings value).
+    Field names match AppSettings 1:1 where applicable so get_app_settings() can
+    overlay them directly via model_copy(update=...).
+    """
+
+    page_title: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("MLOPS_RUNTIME_PARAM_PAGE_TITLE", "PAGE_TITLE"),
+    )
+    page_description: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_PAGE_DESCRIPTION", "PAGE_DESCRIPTION"
+        ),
+    )
+    graph_y_axis: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_GRAPH_Y_AXIS", "GRAPH_Y_AXIS"
+        ),
+    )
+    headline_prompt: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_HEADLINE_PROMPT", "HEADLINE_PROMPT"
+        ),
+    )
+    lower_bound_forecast_at_0: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_LOWER_BOUND_FORECAST_AT_0",
+            "LOWER_BOUND_FORECAST_AT_0",
+        ),
+    )
+    llm_commentary_enabled: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_LLM_COMMENTARY_ENABLED", "LLM_COMMENTARY_ENABLED"
+        ),
+    )
+    maximum_default_display_length: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_MAXIMUM_DEFAULT_DISPLAY_LENGTH",
+            "MAXIMUM_DEFAULT_DISPLAY_LENGTH",
+        ),
+    )
+    minimum_importance: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_MINIMUM_IMPORTANCE", "MINIMUM_IMPORTANCE"
+        ),
+    )
+    prediction_interval: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "MLOPS_RUNTIME_PARAM_PREDICTION_INTERVAL", "PREDICTION_INTERVAL"
+        ),
+    )
+
+
 class Application(DynamicSettings):
     id: str = Field(
         validation_alias=AliasChoices(
