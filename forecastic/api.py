@@ -484,7 +484,7 @@ def _get_predictions_cached(scoring_data_json: str) -> pd.DataFrame:
     predictions = predict(
         deployment=dr.Deployment.get(time_series_deployment_id),
         data_frame=pd.DataFrame(json.loads(scoring_data_json)),
-        max_explanations=3,
+        max_explanations=10,
     ).dataframe
 
     feature_mapping = _get_feature_mapping()
@@ -1041,7 +1041,7 @@ def get_pred_ex_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
     strengths = []
     actual_values = []
 
-    for i in range(1, 4):  # 1, 2, 3
+    for i in range(1, 11):
         feature_col = f"EXPLANATION_{i}_FEATURE_NAME"
         if feature_col not in preds_df.columns:
             continue
@@ -1066,7 +1066,7 @@ def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
     preds_df = pd.DataFrame(preds)
     date_col = app_settings.datetime_partition_column
     rows = []
-    for i in range(1, 4):
+    for i in range(1, 11):
         feature_col = f"EXPLANATION_{i}_FEATURE_NAME"
         strength_col = f"EXPLANATION_{i}_STRENGTH"
         if feature_col not in preds_df.columns:
