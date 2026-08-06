@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "react";
+import { type AxiosProgressEvent } from "axios";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDatabase } from "@fortawesome/free-solid-svg-icons/faDatabase";
 import { Button } from "~/components/ui/button";
@@ -21,6 +22,13 @@ import {
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Label } from "~/components/ui/label";
 import { Input } from "~/components/ui/input";
+import { Progress } from "~/components/ui/progress";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import useRegistryDatasets from "~/hooks/useRegistryDatasets";
 import uploadDataset from "~/api/uploadDataset";
 import { AppStateContext } from "~/state/AppState";
@@ -42,6 +50,9 @@ const DatasetSelectorModal = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const hasChanges = file !== null || selectedId !== (activeDatasetId || DEFAULT_VALUE);
 
   // Reset the form to the currently active selection whenever the modal opens.
   useEffect(() => {
@@ -49,6 +60,7 @@ const DatasetSelectorModal = () => {
       setSelectedId(activeDatasetId || DEFAULT_VALUE);
       setFile(null);
       setError(null);
+      setUploadProgress(0);
     }
   }, [isOpen, activeDatasetId]);
 
@@ -57,7 +69,14 @@ const DatasetSelectorModal = () => {
     setError(null);
     try {
       if (file) {
-        const uploaded = await uploadDataset(file);
+        const uploaded = await uploadDataset(
+          file,
+          (event: AxiosProgressEvent) => {
+            if (event.total) {
+              setUploadProgress(Math.round((event.loaded / event.total) * 100));
+            }
+          },
+        );
         await refetch();
         setActiveDataset(uploaded.id, uploaded.name);
       } else if (selectedId === DEFAULT_VALUE) {
@@ -76,6 +95,7 @@ const DatasetSelectorModal = () => {
       );
     } finally {
       setIsPending(false);
+      setUploadProgress(0);
     }
   };
 
@@ -137,6 +157,9 @@ const DatasetSelectorModal = () => {
               accept=".csv,.xlsx,.xls,.parquet"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
+            {file && isPending ? (
+              <Progress value={uploadProgress} className="h-1" />
+            ) : null}
           </div>
 
           {(error || listError) && (
@@ -154,9 +177,20 @@ const DatasetSelectorModal = () => {
           >
             Cancel
           </Button>
-          <Button onClick={onSave} disabled={isPending}>
-            {isPending ? "Saving…" : "Save"}
-          </Button>
+          <TooltipProvider>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <div>
+                  <Button onClick={onSave} disabled={isPending || !hasChanges}>
+                    {isPending ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              </TooltipTrigger>
+              {!hasChanges && (
+                <TooltipContent>No changes to save</TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </DialogFooter>
       </DialogContent>
     </Dialog>
