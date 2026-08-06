@@ -18,6 +18,7 @@ import datetime as dt
 import functools
 import io
 import json
+import logging
 import sys
 from importlib import resources
 from typing import Any, List, Optional, Tuple
@@ -126,8 +127,70 @@ def _get_completion(
         raise LLMNotAvailableException("LLM is unavailable.") from e
 
 
+def _get_reference_features(project_id: str) -> list[str]:
+    """Base/original feature names from the training dataset, before DataRobot's
+    automatic time series feature derivation - used to map a derived feature like
+    "GTER _ (diff) (12 month max)" back to its base feature "GTER _"."""
+    try:
+        dataset = dr.Project.get(project_id).get_dataset()
+        if dataset is None:
+            return []
+        return [f.name for f in dataset.get_all_features()]
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Failed to get reference features: {e}")
+        return []
+
+
+def _create_feature_mapping(
+    feature_list: list[str], ref_list: list[str]
+) -> dict[str, str]:
+    """Map each feature to the base feature it starts with, if any; otherwise to
+    itself. Every derived feature DataRobot generates for a base column is named
+    with that column as a prefix (e.g. "GTER _ (diff) (12 month max)")."""
+    return {
+        feature: next((ref for ref in ref_list if feature.startswith(ref)), feature)
+        for feature in feature_list
+    }
+
+
+@functools.lru_cache(maxsize=1)
+def _get_feature_mapping() -> dict[str, str]:
+    ref_features = _get_reference_features(app_settings.project_id)
+    if not ref_features:
+        return {}
+    feature_names = [f["featureName"] for f in app_settings.important_features]
+    return _create_feature_mapping(feature_names, ref_features)
+
+
+def _group_important_features(
+    important_features: list[dict[str, Any]], feature_mapping: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Collapse derived features (every "GTER _ (diff) (...)" variant, etc.) onto
+    their base feature, summing impact - so the app's feature list offers a
+    handful of meaningful groups instead of dozens of near-duplicate derived
+    features with individually tiny impact."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for feature in important_features:
+        name = feature.get("featureName", "")
+        base_name = feature_mapping.get(name, name)
+        entry = grouped.setdefault(
+            base_name, {"featureName": base_name, "impactNormalized": 0.0}
+        )
+        entry["impactNormalized"] += feature.get("impactNormalized", 0) or 0
+    return sorted(grouped.values(), key=lambda f: f["impactNormalized"], reverse=True)
+
+
 def get_app_settings() -> AppSettings:
-    return app_settings
+    feature_mapping = _get_feature_mapping()
+    if not feature_mapping:
+        return app_settings
+    return app_settings.model_copy(
+        update={
+            "important_features": _group_important_features(
+                app_settings.important_features, feature_mapping
+            )
+        }
+    )
 
 
 def is_llm_commentary_available() -> bool:
@@ -347,6 +410,75 @@ def get_predictions(scoring_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return predictions.to_dict(orient="records")  # type: ignore[no-any-return]
 
 
+def _aggregate_explanations_by_group(
+    predictions_df: pd.DataFrame,
+    feature_mapping: dict[str, str],
+    max_groups: int = 3,
+) -> pd.DataFrame:
+    """Collapse each row's EXPLANATION_N_* columns onto their base feature,
+    summing strength for explanations that map to the same base (e.g. if a row's
+    top-3 explanations include both "GTER _ (diff) (12 month max)" and
+    "GTER _ (naive latest value)", they combine into one "GTER _" entry, freeing
+    a slot for the next-strongest distinct feature).
+
+    Overwrites the existing EXPLANATION_N_* columns in place (same column names)
+    rather than introducing new ones, so every downstream consumer of these
+    columns (get_pred_ex_df, get_pred_ex_stacked_bar_df) picks up grouped data
+    with no changes needed.
+    """
+    explanation_cols = [
+        c
+        for c in predictions_df.columns
+        if c.startswith("EXPLANATION_") and c.endswith("_FEATURE_NAME")
+    ]
+    max_idx = max((int(c.split("_")[1]) for c in explanation_cols), default=0)
+    if max_idx == 0:
+        return predictions_df
+
+    def aggregate_row(row: pd.Series) -> pd.Series:
+        grouped: dict[str, dict[str, Any]] = {}
+        for i in range(1, max_idx + 1):
+            feat_col = f"EXPLANATION_{i}_FEATURE_NAME"
+            if feat_col not in row.index or pd.isna(row.get(feat_col)):
+                continue
+            feature_name = row[feat_col]
+            group_name = feature_mapping.get(feature_name, feature_name)
+            entry = grouped.setdefault(
+                group_name,
+                {
+                    "strength": 0.0,
+                    "value": row.get(f"EXPLANATION_{i}_ACTUAL_VALUE"),
+                    "qual": row.get(f"EXPLANATION_{i}_QUALITATIVE_STRENGTH", ""),
+                },
+            )
+            entry["strength"] += row.get(f"EXPLANATION_{i}_STRENGTH", 0) or 0
+
+        sorted_groups = sorted(
+            grouped.items(), key=lambda kv: abs(kv[1]["strength"]), reverse=True
+        )[:max_groups]
+
+        new_data: dict[str, Any] = {}
+        for i in range(1, max_idx + 1):
+            if i <= len(sorted_groups):
+                group_name, data = sorted_groups[i - 1]
+                new_data[f"EXPLANATION_{i}_FEATURE_NAME"] = group_name
+                new_data[f"EXPLANATION_{i}_STRENGTH"] = data["strength"]
+                new_data[f"EXPLANATION_{i}_ACTUAL_VALUE"] = data["value"]
+                new_data[f"EXPLANATION_{i}_QUALITATIVE_STRENGTH"] = data["qual"]
+            else:
+                new_data[f"EXPLANATION_{i}_FEATURE_NAME"] = None
+                new_data[f"EXPLANATION_{i}_STRENGTH"] = None
+                new_data[f"EXPLANATION_{i}_ACTUAL_VALUE"] = None
+                new_data[f"EXPLANATION_{i}_QUALITATIVE_STRENGTH"] = None
+        return pd.Series(new_data)
+
+    grouped_cols = predictions_df.apply(aggregate_row, axis=1)
+    result = predictions_df.copy()
+    for col in grouped_cols.columns:
+        result[col] = grouped_cols[col]
+    return result
+
+
 @functools.lru_cache(maxsize=16)
 def _get_predictions_cached(scoring_data_json: str) -> pd.DataFrame:
     predictions = predict(
@@ -354,6 +486,10 @@ def _get_predictions_cached(scoring_data_json: str) -> pd.DataFrame:
         data_frame=pd.DataFrame(json.loads(scoring_data_json)),
         max_explanations=3,
     ).dataframe
+
+    feature_mapping = _get_feature_mapping()
+    if feature_mapping:
+        predictions = _aggregate_explanations_by_group(predictions, feature_mapping)
 
     return predictions
 
