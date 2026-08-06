@@ -201,7 +201,55 @@ app_runtime_parameters = [
     datarobot.ApplicationSourceRuntimeParameterValueArgs(
         key="APP_LOCALE", type="string", value=LocaleSettings().app_locale
     ),
+    # Live-editable use-case display/prediction defaults (see forecastic.resources.
+    # AppOverrides) - admins can change these in the DataRobot UI with no redeploy.
+    # Initial value is whatever the training notebook baked into AppSettings.
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="PAGE_TITLE", type="string", value=model_training_output.page_title
+    ),
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="PAGE_DESCRIPTION",
+        type="string",
+        value=model_training_output.page_description,
+    ),
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="GRAPH_Y_AXIS", type="string", value=model_training_output.graph_y_axis
+    ),
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="HEADLINE_PROMPT",
+        type="string",
+        value=model_training_output.headline_prompt,
+    ),
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="LOWER_BOUND_FORECAST_AT_0",
+        type="boolean",
+        value=model_training_output.lower_bound_forecast_at_0,
+    ),
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="LLM_COMMENTARY_ENABLED",
+        type="boolean",
+        value=model_training_output.llm_commentary_enabled,
+    ),
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="MAXIMUM_DEFAULT_DISPLAY_LENGTH",
+        type="numeric",
+        value=model_training_output.maximum_default_display_length,
+    ),
+    # No matching AppSettings field - this is a pure display filter over the full
+    # nonzero-impact feature list the notebook already bakes (minimum_importance=0).
+    datarobot.ApplicationSourceRuntimeParameterValueArgs(
+        key="MINIMUM_IMPORTANCE", type="numeric", value=0
+    ),
 ]
+
+if model_training_output.prediction_interval is not None:
+    app_runtime_parameters.append(
+        datarobot.ApplicationSourceRuntimeParameterValueArgs(
+            key="PREDICTION_INTERVAL",
+            type="numeric",
+            value=model_training_output.prediction_interval,
+        ),
+    )
 
 if settings_generative.LLM_GATEWAY_MODEL:
     app_runtime_parameters.append(

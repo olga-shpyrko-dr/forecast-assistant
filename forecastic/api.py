@@ -43,6 +43,7 @@ sys.path.append("..")
 from forecastic.i18n import gettext
 from forecastic.resources import (
     Application,
+    AppOverrides,
     GenerativeDeployment,
     LLMGatewaySettings,
     ScoringDataset,
@@ -189,17 +190,63 @@ def _group_important_features(
     return sorted(grouped.values(), key=lambda f: f["impactNormalized"], reverse=True)
 
 
+_SCALAR_OVERRIDE_FIELDS = (
+    "page_title",
+    "page_description",
+    "graph_y_axis",
+    "headline_prompt",
+    "lower_bound_forecast_at_0",
+    "llm_commentary_enabled",
+    "maximum_default_display_length",
+)
+
+
+@functools.lru_cache(maxsize=1)
+def _get_calculated_intervals() -> set[int]:
+    try:
+        model = dr.Model.get(project=app_settings.project_id, model_id=app_settings.model_id)
+        return set(model.get_calculated_prediction_intervals())
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            f"Failed to get calculated prediction intervals: {e}"
+        )
+        return set()
+
+
 def get_app_settings() -> AppSettings:
-    settings = app_settings.model_copy(
-        update={"llm_commentary_available": is_llm_commentary_available()}
-    )
+    overrides = AppOverrides()
+    update: dict[str, Any] = {"llm_commentary_available": is_llm_commentary_available()}
+
+    for field in _SCALAR_OVERRIDE_FIELDS:
+        value = getattr(overrides, field)
+        if value is not None:
+            update[field] = value
+
+    if overrides.prediction_interval is not None:
+        if overrides.prediction_interval in _get_calculated_intervals():
+            update["prediction_interval"] = overrides.prediction_interval
+        else:
+            logging.getLogger(__name__).warning(
+                f"Ignoring PREDICTION_INTERVAL override {overrides.prediction_interval} "
+                "- not one of this model's calculated prediction intervals."
+            )
+
+    settings = app_settings.model_copy(update=update)
+
+    minimum_importance = overrides.minimum_importance or 0.0
+    important_features = [
+        f
+        for f in settings.important_features
+        if (f.get("impactNormalized") or 0) > minimum_importance
+    ]
+
     feature_mapping = _get_feature_mapping()
     if not feature_mapping:
-        return settings
+        return settings.model_copy(update={"important_features": important_features})
     return settings.model_copy(
         update={
             "important_features": _group_important_features(
-                settings.important_features, feature_mapping
+                important_features, feature_mapping
             )
         }
     )
