@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import moment from "moment";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChartLine } from "@fortawesome/free-solid-svg-icons/faChartLine";
 import { faTable } from "@fortawesome/free-solid-svg-icons/faTable";
@@ -160,16 +161,22 @@ const RawValues = ({
     return currentFeature.featureRecords.map((record, index) => {
       return (
         <TableRow key={index}>
+          <TableCell>{moment(record.date).format("YYYY-MM-DD")}</TableCell>
           <TableCell>
-            {new Date(record.date).toLocaleDateString("en-US", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
+            {typeof record.prediction === "number"
+              ? record.prediction.toFixed(2)
+              : "-"}
           </TableCell>
-          <TableCell>{record.prediction || "-"}</TableCell>
-          <TableCell>{record.strength || "-"}</TableCell>
-          <TableCell>{record.featureValue || "-"}</TableCell>
+          <TableCell>
+            {typeof record.strength === "number"
+              ? record.strength.toFixed(2)
+              : "-"}
+          </TableCell>
+          <TableCell>
+            {typeof record.featureValue === "number"
+              ? record.featureValue.toFixed(2)
+              : "-"}
+          </TableCell>
         </TableRow>
       );
     });

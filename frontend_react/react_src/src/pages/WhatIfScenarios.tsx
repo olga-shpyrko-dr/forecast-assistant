@@ -76,8 +76,14 @@ import {
 import { ROUTES } from "~/pages/routes";
 
 const WhatIfScenarios = () => {
-  const { filters, forecastData, forecastSeriesIdsCount, appSettings } =
-    useContext(AppStateContext);
+  const {
+    filters,
+    forecastData: rawForecastData,
+    visibleForecastData: forecastData,
+    forecastSeriesIdsCount,
+    selectedSeriesId,
+    appSettings,
+  } = useContext(AppStateContext);
   const {
     multiseries_id_column: multiseriesIdColumn,
     what_if_features: whatIfFeatures,
@@ -86,8 +92,14 @@ const WhatIfScenarios = () => {
   const isPageEnabled = useMemo(() => {
     const firstMultiseriesId = multiseriesIdColumn || "";
     // If there is no forecast data, the page should be disabled
-    if (forecastData.length < 1) {
+    if (rawForecastData.length < 1) {
       return false;
+    }
+
+    // The Explanations page's series selector narrows down to a single series -
+    // that satisfies "a single series" just as much as the filter/count checks below.
+    if (selectedSeriesId) {
+      return true;
     }
 
     // If there is no filter, the page should be disabled
@@ -104,7 +116,13 @@ const WhatIfScenarios = () => {
     }
 
     return false;
-  }, [filters, multiseriesIdColumn, forecastSeriesIdsCount]);
+  }, [
+    filters,
+    multiseriesIdColumn,
+    forecastSeriesIdsCount,
+    rawForecastData,
+    selectedSeriesId,
+  ]);
 
   const isWhatIfScenariosAvailable = useMemo(() => {
     if (!whatIfFeatures) return false;
@@ -165,7 +183,7 @@ const Scenarios = () => {
 
 const ScenariosSidebar = () => {
   const {
-    forecastData,
+    visibleForecastData: forecastData,
     whatIfScenarios,
     activeWhatIfScenarioId,
     addWhatIfScenario,
