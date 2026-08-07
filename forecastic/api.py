@@ -418,6 +418,31 @@ def get_scoring_data(
     return df.to_dict(orient="records")  # type: ignore[no-any-return]
 
 
+def apply_what_if_overrides(
+    scoring_data: list[dict[str, Any]],
+    overrides: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a copy of ``scoring_data`` with known-in-advance feature values
+    overridden per a (feature name -> {date -> value}) map.
+
+    Mirrors the React port's ``formatWhatIfScenarioData``: only cells matching a
+    staged (date, feature) override change; every other row/column is left as-is,
+    so the result can be sent straight to ``get_predictions`` for re-scoring.
+    """
+    if not overrides:
+        return scoring_data
+    date_col = app_settings.datetime_partition_column
+    updated = []
+    for row in scoring_data:
+        new_row = dict(row)
+        row_date = str(row.get(date_col))
+        for feature_name, date_values in overrides.items():
+            if row_date in date_values:
+                new_row[feature_name] = date_values[row_date]
+        updated.append(new_row)
+    return updated
+
+
 def get_filters() -> List[MultiSelectFilter]:
     """
     Get available options for each filter.
@@ -817,6 +842,7 @@ def get_forecast_as_plotly_json(
     predictions: list[dict[str, Any]] | None = None,
     display_series: str | None = None,
     feature_color_map: dict[str, str] | None = None,
+    show_confidence_interval: bool = True,
 ) -> dict[str, Any]:
     """
     Render the forecast chart as a Plotly figure.
@@ -866,6 +892,7 @@ def get_forecast_as_plotly_json(
             history_name=history_name,
             forecast_name=forecast_name,
             feature_color_map=feature_color_map,
+            show_confidence_interval=show_confidence_interval,
         )
 
     # ── Fallback: simple single-row chart ────────────────────────────────
@@ -878,7 +905,7 @@ def get_forecast_as_plotly_json(
         line=dict(color="#81FBA5", width=1.5),
         marker=dict(color="#81FBA5", size=5, symbol="circle"),
     ))
-    if forecast["low"].notna().any():
+    if show_confidence_interval and forecast["low"].notna().any():
         fig.add_trace(go.Scatter(
             x=forecast["date_id"], y=forecast["low"], mode="lines",
             name=gettext("Low forecast"),
@@ -928,6 +955,7 @@ def _build_combined_figure(
     history_name: str | None = None,
     forecast_name: str | None = None,
     feature_color_map: dict[str, str] | None = None,
+    show_confidence_interval: bool = True,
 ) -> dict[str, Any]:
     """2×2 combined layout: history | forecast / empty | stacked bar."""
 
@@ -967,7 +995,7 @@ def _build_combined_figure(
     ), row=1, col=1)
 
     # ── Top-right: forecast ──────────────────────────────────────────────
-    if forecast["low"].notna().any():
+    if show_confidence_interval and forecast["low"].notna().any():
         fig.add_trace(go.Scatter(
             x=forecast["date_id"], y=forecast["low"], mode="lines",
             name=gettext("Low forecast"),
@@ -1068,6 +1096,81 @@ def _build_combined_figure(
     return fig.to_dict()  # type: ignore[no-any-return]
 
 
+def get_whatif_comparison_plotly_json(
+    scoring_data: list[dict[str, Any]],
+    n_historical_records_to_display: int,
+    original_predictions: list[dict[str, Any]],
+    scenario_predictions: list[dict[str, Any]],
+    display_series: str | None = None,
+) -> dict[str, Any]:
+    """History + original forecast + What-If scenario forecast, three overlaid
+    lines - net-new, no equivalent existed before the What-If Scenarios page."""
+    datetime_partition_column = app_settings.datetime_partition_column
+    target = app_settings.target
+
+    chart_scoring_data = scoring_data
+    chart_original = original_predictions
+    chart_scenario = scenario_predictions
+    if display_series is not None:
+        chart_scoring_data = _filter_records_by_series(scoring_data, display_series)
+        chart_original = _filter_records_by_series(original_predictions, display_series)
+        chart_scenario = _filter_records_by_series(scenario_predictions, display_series)
+
+    original_forecast = pd.DataFrame(
+        [i.model_dump() for i in _process_predictions(chart_original)]
+    )
+    scenario_forecast = pd.DataFrame(
+        [i.model_dump() for i in _process_predictions(chart_scenario)]
+    )
+    history = _aggregate_scoring_data(chart_scoring_data).tail(
+        n_historical_records_to_display
+    )
+    actual_col = _resolve_actual_col(history, target)
+    history_actual = history[history[actual_col].notna()]
+
+    fig = make_subplots(specs=[[{"secondary_y": False}]])
+    fig.add_trace(go.Scatter(
+        x=history_actual.timestamp, y=history_actual[actual_col],
+        mode="lines+markers",
+        name=gettext("{target} History").format(target=target),
+        line=dict(color="#81FBA5", width=1.5),
+        marker=dict(color="#81FBA5", size=5, symbol="circle"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=original_forecast["date_id"], y=original_forecast["prediction"],
+        mode="lines+markers",
+        name=gettext("Original forecast"),
+        line=dict(color="#44BFFC", width=1.5),
+        marker=dict(color="#44BFFC", size=5, symbol="circle"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=scenario_forecast["date_id"], y=scenario_forecast["prediction"],
+        mode="lines+markers",
+        name=gettext("Scenario forecast"),
+        line=dict(color="#FFFF54", width=1.5, dash="dot"),
+        marker=dict(color="#FFFF54", size=5, symbol="circle"),
+    ))
+    if len(history_actual):
+        fig.add_vline(
+            x=history_actual["timestamp"].max(),
+            line_width=1, line_dash="dash", line_color="#2a2a2a",
+        )
+    fig.update_xaxes(**_AXIS_STYLE, title_text=datetime_partition_column)
+    fig.update_yaxes(**_AXIS_STYLE, title_font_size=13, title_text=app_settings.graph_y_axis)
+    fig.update_layout(
+        **_LAYOUT_BASE,
+        height=480,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="top", y=-0.18,
+                    font=dict(family="DM Sans", size=12, color="#A2A2A2"),
+                    bgcolor="rgba(0,0,0,0)"),
+        margin=dict(l=50, r=30, b=20, t=30, pad=4),
+        xaxis=dict(rangeslider=dict(visible=True, bgcolor="#111111"), type="date"),
+    )
+    fig.update_traces(connectgaps=False)
+    return fig.to_dict()  # type: ignore[no-any-return]
+
+
 def _aggregate_scoring_data(scoring_data: list[dict[str, Any]]) -> pd.DataFrame:
     """Aggregate scoring data for plotting."""
     datetime_column = app_settings.datetime_partition_column
@@ -1129,6 +1232,97 @@ def get_pred_ex_stacked_bar_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
         return pd.DataFrame(columns=["date_id", "feature", "strength"])
     combined = pd.concat(rows, ignore_index=True)
     return combined.groupby(["date_id", "feature"], as_index=False)["strength"].sum()
+
+
+def _pred_ex_long_df(preds: List[dict[str, Any]]) -> pd.DataFrame:
+    """Long-format (date_id, feature, strength, feature_value) - one row per
+    (timestamp, feature) explanation, summed/averaged across explanation ranks (and
+    across series, if ``preds`` spans more than one series sharing a date)."""
+    preds_df = pd.DataFrame(preds)
+    date_col = app_settings.datetime_partition_column
+    rows = []
+    for i in range(1, 11):
+        feature_col = f"EXPLANATION_{i}_FEATURE_NAME"
+        strength_col = f"EXPLANATION_{i}_STRENGTH"
+        value_col = f"EXPLANATION_{i}_ACTUAL_VALUE"
+        if feature_col not in preds_df.columns:
+            continue
+        tmp = preds_df[[date_col, feature_col, strength_col, value_col]].rename(
+            columns={
+                date_col: "date_id",
+                feature_col: "feature",
+                strength_col: "strength",
+                value_col: "feature_value",
+            }
+        )
+        rows.append(tmp)
+    if not rows:
+        return pd.DataFrame(columns=["date_id", "feature", "strength", "feature_value"])
+    combined = pd.concat(rows, ignore_index=True).dropna(subset=["feature"])
+    # feature_value can be categorical (a string) for categorical features, so it
+    # can't always be averaged across rows sharing a (date, feature) - e.g. several
+    # series on the same date each with their own category. Take a representative
+    # value instead; strength (always numeric) is genuinely summed across series.
+    return combined.groupby(["date_id", "feature"], as_index=False).agg(
+        strength=("strength", "sum"),
+        feature_value=("feature_value", lambda s: s.dropna().iloc[0] if s.notna().any() else None),
+    )
+
+
+def get_permutation_summary_df(
+    preds: List[dict[str, Any]], feature_filter: Optional[list[str]] = None
+) -> pd.DataFrame:
+    """Per-feature average strength + trend across the full forecast - powers the
+    'Full forecast' permutation-based explanations table."""
+    long_df = _pred_ex_long_df(preds).sort_values("date_id")
+    if feature_filter:
+        long_df = long_df[long_df["feature"].isin(feature_filter)]
+    if long_df.empty:
+        return pd.DataFrame(columns=["feature", "avg_strength", "trend"])
+    grouped = (
+        long_df.groupby("feature")
+        .agg(avg_strength=("strength", "mean"), trend=("strength", list))
+        .reset_index()
+    )
+    grouped = grouped[grouped["avg_strength"] != 0]
+    return grouped.sort_values(
+        "avg_strength", key=lambda s: s.abs(), ascending=False
+    ).reset_index(drop=True)
+
+
+def get_permutation_single_date_df(
+    preds: List[dict[str, Any]],
+    date: str,
+    feature_filter: Optional[list[str]] = None,
+) -> pd.DataFrame:
+    """Per-feature strength + feature value for one date - powers the 'Single date'
+    permutation-based explanations table."""
+    long_df = _pred_ex_long_df(preds)
+    long_df = long_df[long_df["date_id"] == date]
+    if feature_filter:
+        long_df = long_df[long_df["feature"].isin(feature_filter)]
+    long_df = long_df[long_df["strength"] != 0]
+    return (
+        long_df[["feature", "strength", "feature_value"]]
+        .sort_values("strength", key=lambda s: s.abs(), ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def get_permutation_detail_df(
+    preds: List[dict[str, Any]], feature: str
+) -> pd.DataFrame:
+    """Per-timestamp forecast/strength/feature-value rows for one feature - powers
+    the permutation-based drill-down (trend charts + raw values table). Assumes
+    ``preds`` is already filtered to a single series, matching every other
+    per-series chart/table helper in this module."""
+    long_df = _pred_ex_long_df(preds)
+    feature_df = long_df[long_df["feature"] == feature].sort_values("date_id")
+
+    processed = pd.DataFrame([p.model_dump() for p in _process_predictions(preds)])[
+        ["date_id", "prediction"]
+    ]
+    return feature_df.merge(processed, on="date_id", how="left").reset_index(drop=True)
 
 
 def get_llm_summary(predictions: List[dict[str, Any]]) -> ForecastSummary:
